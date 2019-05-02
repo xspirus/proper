@@ -37,7 +37,11 @@ next_state(S, _V, {call, _, stop_car, []}) ->
 next_state(S, _V, {call, _, accelerate, [Value]}) ->
     S#state{speed = S#state.speed + Value};
 next_state(S, _V, {call, _, brake, [Value]}) ->
-    S#state{speed = S#state.speed - Value}.
+    #state{speed = Speed} = S,
+    case Speed - Value >= 0 of
+        true -> S#state{speed = Speed - Value};
+        false -> S#state{speed = 0}
+    end.
 
 precondition(_, _) -> true.
 
