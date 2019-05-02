@@ -12,3 +12,4 @@ doc/edoc-info
 .directory
 .eunit
 .rebar
+_build
