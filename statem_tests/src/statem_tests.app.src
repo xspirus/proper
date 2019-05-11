@@ -8,7 +8,10 @@
     stdlib
    ]},
   {env,[]},
-  {modules, []},
+  {modules, [
+      statem_car_model,
+      statem_car_server
+  ]},
 
   {licenses, ["Apache 2.0"]},
   {links, []}
