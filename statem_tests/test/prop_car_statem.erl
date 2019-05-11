@@ -128,15 +128,6 @@ next_state(S, _V, {call, _, refuel, [Amount]}) ->
         consumptions = Consumptions ++ Consumption
     }.
 
-update_state(S, {Distance, Consumptions, {Fuel, Speed}}) ->
-    S#state{
-        fuel = Fuel,
-        speed = Speed,
-        consumptions = S#state.consumptions ++ Consumptions,
-        distance = S#state.distance + Distance
-    };
-update_state(S, _) -> S.
-
 %% ----------------------------------------------------------------------------
 %% Properties
 %% ----------------------------------------------------------------------------

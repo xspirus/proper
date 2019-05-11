@@ -9,7 +9,6 @@
    ]},
   {env,[]},
   {modules, [
-      statem_car_model,
       statem_car_server
   ]},
 
