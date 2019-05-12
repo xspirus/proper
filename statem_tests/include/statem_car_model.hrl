@@ -3,8 +3,8 @@
 %% ---------------------------------------------------------------------------
 
 -define(HOUR, 3600).
--define(ACCELERATION, 2).
--define(DECELERATION, 10).
+-define(ACCELERATION, 5).
+-define(DECELERATION, 20).
 -define(MAX_FUEL, 70).
 
 %% AVG function for lists
@@ -60,10 +60,10 @@ acceleration_calculations({Speed, Acceleration}, Fuel) ->
 %% Calculate distance driven when accelerating - decelerating.
 calculate_distance(Speed, Acceleration) when Acceleration > 0 ->
     T = Acceleration / ?ACCELERATION,
-    Speed / ?HOUR * T + 1 / 2 * ?ACCELERATION / (?HOUR * ?HOUR) * T * T;
+    Speed / ?HOUR * T + 1 / 2 * ?ACCELERATION / ?HOUR * T * T;
 calculate_distance(Speed, Acceleration)->
     T = -Acceleration / ?DECELERATION,
-    Speed / ?HOUR * T - 1 / 2 * ?DECELERATION / (?HOUR * ?HOUR) * T * T.
+    Speed / ?HOUR * T - 1 / 2 * ?DECELERATION / ?HOUR * T * T.
 
 %% Low speeds give rewards to consumption.
 %% High speed give penalty to consumption.
