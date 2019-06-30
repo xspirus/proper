@@ -27,7 +27,7 @@ travel_calculations(Distance, Speed, Fuel) ->
     end,
     T = round(Travelled / Speed * 10),
     Consumptions = lists:duplicate(T, Consumption),
-    {Distance, Consumptions, Burnt}.
+    {Travelled, Consumptions, Burnt}.
 
 acceleration_calculations({Speed, Acceleration}, Fuel) when Acceleration > 0 ->
     Consumption = fuel_consumption(Speed, Acceleration),
