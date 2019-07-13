@@ -5,7 +5,7 @@
 -include_lib("proper/include/proper.hrl").
 
 -export([initial_state/0, command/1, precondition/2, postcondition/3,
-         next_state/3]).
+         next_state/3, list_commands/1, num_commands/0]).
 
 -type fuel() :: float().
 -type speed() :: non_neg_integer().
@@ -65,6 +65,18 @@ command(S) ->
         {2, {call, ?SERVER, brake, [brake(Speed)]}} || Speed < 100.0 andalso Speed > 0.0
     ],
     frequency(End).
+
+list_commands(S) ->
+    Speed = S#state.speed,
+    Fuel = S#state.fuel,
+    [
+        {call, ?SERVER, accelerate, [accelerate(Speed)]},
+        {call, ?SERVER, brake, [brake(Speed)]},
+        {call, ?SERVER, travel, [integer(1, 100)]},
+        {call, ?SERVER, refuel, [refuel(Fuel)]}
+    ].
+
+num_commands() -> 4.
 
 precondition(#state{fuel = Fuel, speed = Speed}, {call, _, accelerate, _}) ->
     Fuel > ?MAX_FUEL * 0.1 andalso Speed < 200;
@@ -141,7 +153,7 @@ next_state(S, _V, {call, _, refuel, [Amount]}) ->
 %% ----------------------------------------------------------------------------
 
 prop_server_distance() ->
-    ?FORALL(Cmds, commands(?MODULE),
+    ?FORALL(Cmds, proper_statem:weighted_commands(?MODULE, [1, 5, 10, 1]),
         ?TRAPEXIT(
             begin
                 ?SERVER:start_link(),

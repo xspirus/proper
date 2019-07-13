@@ -223,8 +223,8 @@
 
 -module(proper_statem).
 
--export([commands/1, commands/2, parallel_commands/1, parallel_commands/2,
-	 more_commands/2]).
+-export([commands/1, commands/2, weighted_commands/1, weighted_commands/2,
+         parallel_commands/1, parallel_commands/2, more_commands/2]).
 -export([run_commands/2, run_commands/3, run_parallel_commands/2,
 	 run_parallel_commands/3]).
 -export([state_after/2, command_names/1, zip/2]).
@@ -291,6 +291,82 @@
 -callback next_state(symbolic_state() | dynamic_state(), term(),
 		     symbolic_call()) -> symbolic_state() | dynamic_state().
 
+%% -----------------------------------------------------------------------------
+%% Weighted command generation
+%% -----------------------------------------------------------------------------
+
+-spec weighted_commands(mod_name()) -> proper_types:type().
+weighted_commands(Mod) ->
+    Num = Mod:num_commands(),
+    Weights = lists:duplicate(Num, 1),
+    weighted_commands(Mod, Weights).
+
+-spec weighted_commands(mod_name(), [pos_integer()]) -> proper_types:type().
+weighted_commands(Mod, Weights) ->
+    ?LET(
+        InitialState,
+        Mod:initial_state(),
+        ?SUCHTHAT(
+            Cmds,
+            ?LET(
+                List,
+                ?SIZED(
+                    Size,
+                    proper_types:noshrink(
+                        weighted_commands(Size, Mod, Weights, InitialState, 1)
+                    )
+                ),
+                proper_types:shrink_list(List)
+            ),
+            is_valid(Mod, InitialState, Cmds, [])
+        )
+    ).
+
+-spec weighted_commands(
+    size(),
+    mod_name(),
+    [pos_integer()],
+    symbolic_state(),
+    pos_integer()
+) -> proper_types:type().
+weighted_commands(Size, Mod, Weights, State, Count) ->
+    ?LAZY(
+        proper_types:frequency(
+            [
+                {1, []},
+                {Size, ?LET(
+                    Call,
+                    select_command(Mod, Weights, State),
+                    begin
+                        Var = {var, Count},
+                        NextState = Mod:next_state(State, Var, Call),
+                        ?LET(
+                            Cmds,
+                            weighted_commands(Size - 1, Mod, Weights, NextState, Count + 1),
+                            [{set, Var, Call} | Cmds]
+                        )
+                    end
+                )}
+            ]
+        )
+    ).
+
+select_command(Mod, Weights, State) ->
+    ?LET(
+        Commands,
+        Mod:list_commands(State),
+        begin
+            Zipped = lists:zip(Weights, Commands),
+            proper_types:frequency(
+                lists:filter(
+                    fun ({_W, C}) ->
+                        Mod:precondition(State, C)
+                    end,
+                    Zipped 
+                )
+            )
+        end
+    ).
 
 %% -----------------------------------------------------------------------------
 %% Sequential command generation
