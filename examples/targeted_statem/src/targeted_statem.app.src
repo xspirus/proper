@@ -1,0 +1,17 @@
+{application, targeted_statem,
+ [{description, "An OTP application"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {targeted_statem_app, []}},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, [
+      targeted_statem_car
+  ]},
+
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.
