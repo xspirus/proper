@@ -160,7 +160,40 @@ prop_server_distance() ->
                 {_History, State, Result} = run_commands(?MODULE, Cmds),
                 ?SERVER:stop(),
                 #state{distance = Distance, burnt = Burnt} = State,
-                ?WHENFAIL(io:format("Distance: ~p~nConsumption: ~p~nResult: ~p~n",
-                                    [Distance, 100 * Burnt / Distance, Result]),
+                ?WHENFAIL(io:format("Distance: ~p~nConsumption: ~p~n",
+                                    [Distance, 100 * Burnt / Distance]),
                           aggregate(command_names(Cmds), Result =:= ok andalso (Distance < 1000 orelse 100 * Burnt / Distance > 7)))
             end)).
+
+prop_server_targeted() ->
+    ?FORALL_TARGETED(
+        Mixed,
+        proper_statem:targeted_commands(?MODULE),
+        ?TRAPEXIT(
+            begin
+                {_, Cmds, _} = Mixed,
+                case length(Cmds) > 0 of
+                    true ->       
+                        ?SERVER:start_link(),
+                        {_History, State, Result} = run_commands(?MODULE, Cmds),
+                        ?SERVER:stop(),
+                        #state{distance = Distance, burnt = Burnt} = State,
+                        Consumption = 100 * Burnt / Distance,
+                        UV = case Consumption > 7 of
+                            true -> 0;
+                            false -> Distance
+                        end,
+                        ?MAXIMIZE(UV),
+                        ?WHENFAIL(
+                            io:format("Distance: ~p~nConsumption: ~p~n", [Distance, Consumption]),
+                            aggregate(
+                                command_names(Cmds),
+                                Result =:= ok andalso (Distance < 1000 orelse Consumption > 7)
+                            )
+                        );
+                    false ->
+                        true
+                    end
+            end
+        )
+    ).

@@ -224,7 +224,8 @@
 -module(proper_statem).
 
 -export([commands/1, commands/2, weighted_commands/1, weighted_commands/2,
-         parallel_commands/1, parallel_commands/2, more_commands/2]).
+         parallel_commands/1, parallel_commands/2, more_commands/2,
+         targeted_commands/1, targeted_commands/2]).
 -export([run_commands/2, run_commands/3, run_parallel_commands/2,
 	 run_parallel_commands/3]).
 -export([state_after/2, command_names/1, zip/2]).
@@ -366,6 +367,58 @@ select_command(Mod, Weights, State) ->
                 )
             )
         end
+    ).
+
+%% @private
+next_commands() ->
+    fun ({Weights, _Cmds, Mod}, _T) ->
+        NewWeights = lists:map(
+            fun (Weight) -> 
+                Random = crypto:rand_uniform(-1, 2),
+                NW = Weight + Random,
+                case NW < 1 of
+                    true ->
+                        1;
+                    false ->
+                        NW
+                end
+            end,
+            Weights),
+        targeted_weighted_commands(Mod, NewWeights)
+    end.
+
+targeted_commands(Mod) ->
+    ?USERNF(targeted_weighted_commands(Mod), next_commands()).
+
+targeted_commands(Mod, Weights) ->
+    ?USERNF(targeted_weighted_commands(Mod, Weights), next_commands()).
+
+targeted_weighted_commands(Mod) ->
+    Num = Mod:num_commands(),
+    Weights = lists:duplicate(Num, 1),
+    targeted_weighted_commands(Mod, Weights).
+
+targeted_weighted_commands(Mod, Weights) ->
+    ?LET(
+        InitialState,
+        Mod:initial_state(),
+        ?SUCHTHAT(
+            Mixed,
+            ?LET(
+                List,
+                ?SIZED(
+                    Size,
+                    proper_types:noshrink(
+                        weighted_commands(Size, Mod, Weights, InitialState, 1)
+                    )
+                ),
+                {Weights, proper_types:shrink_list(List), Mod}
+            ),
+            begin
+                {_, Cmds, Mod} = Mixed,
+                is_valid(Mod, InitialState, Cmds, [])
+            end
+        )
     ).
 
 %% -----------------------------------------------------------------------------

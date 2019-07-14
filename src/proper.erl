@@ -1300,8 +1300,12 @@ perform_search(Steps, NumSteps, TriesLeft, Target, DTest,
 	    Instance = proper_gen:clean_instance(ImmInstance),
 	    NewBound = [ImmInstance | Bound],
 	    case force(Instance, DTest, Ctx#ctx{bound = NewBound}, Opts) of
-		#pass{reason=true_prop, actions = Actions} ->
+		#pass{reason=true_prop} ->
+            Print(".", []),
+		    grow_size(Opts),
+		    perform_search(Steps + 1, NumSteps, TriesLeft - 1, Target, DTest, Ctx, Opts, Not);
 		    %% the search is finished
+		#fail{reason=false_prop, actions = Actions} ->
 		    Print("!", []),
 		    case Not of
 			true ->
@@ -1309,10 +1313,6 @@ perform_search(Steps, NumSteps, TriesLeft, Target, DTest,
 			false ->
 			    create_pass_result(Ctx, true_prop)
 		    end;
-		#fail{reason=false_prop} ->
-		    Print(".", []),
-		    grow_size(Opts),
-		    perform_search(Steps + 1, NumSteps, TriesLeft - 1, Target, DTest, Ctx, Opts, Not);
 		#fail{} = FailResult -> %% TODO check that fails in the EXIST macros trigger a bug
 		    Print("!", []),
 		    FailResult#fail{performed = Steps + 1};
