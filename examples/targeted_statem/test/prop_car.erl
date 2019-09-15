@@ -162,7 +162,7 @@ prop_server_distance() ->
                 #state{distance = Distance, burnt = Burnt} = State,
                 ?WHENFAIL(io:format("Distance: ~p~nConsumption: ~p~n",
                                     [Distance, 100 * Burnt / Distance]),
-                          aggregate(command_names(Cmds), Result =:= ok andalso (Distance < 1000 orelse 100 * Burnt / Distance > 7)))
+                          aggregate(command_names(Cmds), Result =:= ok andalso (Distance < 1000 orelse 100 * Burnt / Distance > 10)))
             end)).
 
 prop_server_targeted() ->
@@ -188,7 +188,7 @@ prop_server_targeted() ->
                             io:format("Distance: ~p~nConsumption: ~p~n", [Distance, Consumption]),
                             aggregate(
                                 command_names(Cmds),
-                                Result =:= ok andalso (Distance < 1000 orelse Consumption > 7)
+                                Result =:= ok andalso (Distance < 1000 orelse Consumption > 10)
                             )
                         );
                     false ->
