@@ -374,7 +374,7 @@ next_commands() ->
     fun ({Weights, _Cmds, Mod}, _T) ->
         NewWeights = lists:map(
             fun (Weight) -> 
-                Random = crypto:rand_uniform(-1, 5),
+                Random = rand:uniform(1 + (3 - (-1))) - 2,
                 NW = Weight + Random,
                 case NW < 1 of
                     true ->
