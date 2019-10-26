@@ -52,8 +52,11 @@
 %% proper_statem
 -export([initial_state/0, command/1, precondition/2, postcondition/3,
          next_state/3]).
+-export([list_commands/1, num_commands/0]).
+%% properties
+-export([prop_server_distance/0, prop_weighted_distance/0]).
 %% proper
--export([test/0, test/1]).
+-export([test/1, test/2]).
 
 %% -----------------------------------------------------------------------------
 %% Records
@@ -153,7 +156,7 @@ braker(Speed) ->
     end.
 
 traveler() ->
-    integer(1, 10).
+    integer(1, 100).
 
 refueler(Fuel) ->
     case Fuel > ?MAX_FUEL - 1 of
@@ -177,6 +180,15 @@ command(S) ->
            {call, ?MODULE, brake, [braker(Speed)]},
            {call, ?MODULE, travel, [traveler()]},
            {call, ?MODULE, refuel, [refueler(Fuel)]}]).
+
+list_commands(S) ->
+    #state{fuel = Fuel, speed = Speed} = S,
+    [{call, ?MODULE, accelerate, [accelerator(Speed)]},
+     {call, ?MODULE, brake, [braker(Speed)]},
+     {call, ?MODULE, travel, [traveler()]},
+     {call, ?MODULE, refuel, [refueler(Fuel)]}].
+
+num_commands() -> 4.
 
 precondition(#state{fuel = Fuel, speed = Speed}, {call, _, accelerate, _}) ->
     Fuel > ?MAX_FUEL * 0.1 andalso Speed < 200;
@@ -260,15 +272,36 @@ prop_server_distance() ->
                 )
             end)).
 
+prop_weighted_distance() ->
+    ?FORALL(Cmds, proper_statem:weighted_commands(?MODULE, [1, 2, 4, 1]),
+        ?TRAPEXIT(
+            begin
+                start_link(),
+                {_H, S, R} = run_commands(?MODULE, Cmds),
+                stop(),
+                #state{distance = Distance, burnt = Burnt} = S,
+                Consumption = case Distance > 0 of
+                    true -> 100 * Burnt / Distance;
+                    false -> 0
+                end,
+                ?WHENFAIL(
+                    io:format("Distance: ~p~nConsumption: ~p~n", 
+                              [Distance, Consumption]),
+                    aggregate(command_names(Cmds),
+                              R =:= ok andalso (Distance < 1000 orelse 
+                                                Consumption > 10))
+                )
+            end)).
+
 %% -----------------------------------------------------------------------------
 %% Automatic Testing
 %% -----------------------------------------------------------------------------
 
-test() ->
-    test(100).
+test(Prop) ->
+    test(Prop, 100).
 
-test(N) ->
-    proper:quickcheck(prop_server_distance(), N).
+test(Prop, N) ->
+    proper:quickcheck(Prop, N).
 
 %% -----------------------------------------------------------------------------
 %% Calculation Functions
