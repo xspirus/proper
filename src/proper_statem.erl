@@ -224,7 +224,7 @@
 -module(proper_statem).
 
 -export([commands/1, commands/2, parallel_commands/1, parallel_commands/2,
-	 more_commands/2]).
+	 more_commands/2, weighted_commands/1, weighted_commands/2]).
 -export([run_commands/2, run_commands/3, run_parallel_commands/2,
 	 run_parallel_commands/3]).
 -export([state_after/2, command_names/1, zip/2]).
@@ -261,6 +261,7 @@
 -type command_list()      :: [command()].
 -type parallel_testcase() :: {command_list(),[command_list()]}.
 -type parallel_history()  :: [{command(),term()}].
+-type weights()           :: [pos_integer()].
 -type history()           :: [{dynamic_state(),term()}].
 -type statem_result() :: 'ok'
 		       | 'initialization_error'
@@ -291,6 +292,11 @@
 -callback next_state(symbolic_state() | dynamic_state(), term(),
 		     symbolic_call()) -> symbolic_state() | dynamic_state().
 
+-callback list_commands(symbolic_state()) -> [symbolic_call()].
+
+-callback num_commands() -> pos_integer().
+
+-optional_callbacks([list_commands/1, num_commands/0]).
 
 %% -----------------------------------------------------------------------------
 %% Sequential command generation
@@ -455,6 +461,57 @@ move_shrinker(Seq, Par, I) ->
 		 [{Seq ++ Slice, remove_slice(I, Slice, Par)}
 		  || Slice <- get_slices(lists:nth(I, Par))]),
 	 move_shrinker(NewSeq, NewPar, I-1)).
+
+
+%% -----------------------------------------------------------------------------
+%% Weighted command generation
+%% -----------------------------------------------------------------------------
+
+-spec weighted_commands(mod_name()) -> proper_types:type().
+weighted_commands(Mod) ->
+    Num = Mod:num_commands(),
+    Weights = lists:duplicate(Num, 1),
+    weighted_commands(Mod, Weights).
+
+-spec weighted_commands(mod_name(), weights()) -> proper_types:type().
+weighted_commands(Mod, Weights) ->
+    ?LET(InitialState, ?LAZY(Mod:initial_state()),
+     ?SUCHTHAT(
+      Cmds,
+      ?LET(List,
+           ?SIZED(Size,
+                  proper_types:noshrink(
+                      weighted_commands(Size, Mod, Weights, InitialState, 1)
+                  )),
+           proper_types:shrink_list(List)),
+      is_valid(Mod, InitialState, Cmds, []))).
+
+-spec weighted_commands(size(), mod_name(), weights(), symbolic_state(),
+                        pos_integer()) -> proper_types:type().
+weighted_commands(Size, Mod, Weights, State, Count) ->
+    ?LAZY(proper_types:frequency(
+        [{1, []},
+         {Size, ?LET(Call,
+                     select_command(Mod, Weights, State),
+                     begin
+                         Var = {var, Count},
+                         NextState = Mod:next_state(State, Var, Call),
+                         ?LET(Cmds,
+                              weighted_commands(Size - 1, Mod, Weights,
+                                                NextState, Count + 1),
+                              [{set, Var, Call} | Cmds])
+                     end)}])).
+
+-spec select_command(mod_name(), weights(), 
+                     symbolic_state()) -> symbolic_call().
+select_command(Mod, Weights, State) ->
+    ?LET(Cmds,
+         Mod:list_commands(State),
+         begin
+             Zipped = lists:zip(Weights, Cmds),
+             proper_types:frequency([{W, Call} || {W, Call} <- Zipped,
+                                     Mod:precondition(State, Call)])
+         end).
 
 
 %% -----------------------------------------------------------------------------
