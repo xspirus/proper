@@ -252,6 +252,7 @@ next_state(S, _V, {call, _, refuel, [Amount]}) ->
 %% Properties
 %% -----------------------------------------------------------------------------
 
+%% This should rarely produce a counter example.
 prop_normal_distance() ->
     ?FORALL(Cmds, commands(?MODULE),
         ?TRAPEXIT(
@@ -273,6 +274,7 @@ prop_normal_distance() ->
                 )
             end)).
 
+%% This should always produce when running 1000 tests.
 prop_weighted_distance() ->
     ?FORALL(Cmds, proper_statem:weighted_commands(?MODULE, [1, 2, 4, 1]),
         ?TRAPEXIT(
@@ -294,6 +296,7 @@ prop_weighted_distance() ->
                 )
             end)).
 
+%% This should always produce when running 1000 tests.
 prop_targeted_distance() ->
     ?FORALL_TARGETED(Cmds, proper_statem:targeted_commands(?MODULE),
         ?TRAPEXIT(
