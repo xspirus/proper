@@ -224,7 +224,8 @@
 -module(proper_statem).
 
 -export([commands/1, commands/2, parallel_commands/1, parallel_commands/2,
-	 more_commands/2, weighted_commands/1, weighted_commands/2]).
+	 more_commands/2, weighted_commands/1, weighted_commands/2, targeted_commands/1,
+     targeted_commands/2]).
 -export([run_commands/2, run_commands/3, run_parallel_commands/2,
 	 run_parallel_commands/3]).
 -export([state_after/2, command_names/1, zip/2]).
@@ -467,11 +468,20 @@ move_shrinker(Seq, Par, I) ->
 %% Weighted command generation
 %% -----------------------------------------------------------------------------
 
+%% @doc A special PropEr type which generates random command sequences, while
+%% taking into consideration the frequency with which each command is picked,
+%% according to an abstract state machine specification. The function takes as
+%% input the name of a callback module, which contains the state machine
+%% specification. The initial state is computed by `Mod:initial_state/0'.
+
 -spec weighted_commands(mod_name()) -> proper_types:type().
 weighted_commands(Mod) ->
     Num = Mod:num_commands(),
     Weights = lists:duplicate(Num, 1),
     weighted_commands(Mod, Weights).
+
+%% @doc Similar to {@link weighted_commands/1}, but generated command sequences
+%% always have the weights given as an argument.
 
 -spec weighted_commands(mod_name(), weights()) -> proper_types:type().
 weighted_commands(Mod, Weights) ->
@@ -486,6 +496,7 @@ weighted_commands(Mod, Weights) ->
            proper_types:shrink_list(List)),
       is_valid(Mod, InitialState, Cmds, []))).
 
+%% @private
 -spec weighted_commands(size(), mod_name(), weights(), symbolic_state(),
                         pos_integer()) -> proper_types:type().
 weighted_commands(Size, Mod, Weights, State, Count) ->
@@ -502,6 +513,7 @@ weighted_commands(Size, Mod, Weights, State, Count) ->
                               [{set, Var, Call} | Cmds])
                      end)}])).
 
+%% @private
 -spec select_command(mod_name(), weights(), 
                      symbolic_state()) -> symbolic_call().
 select_command(Mod, Weights, State) ->
@@ -512,6 +524,71 @@ select_command(Mod, Weights, State) ->
              proper_types:frequency([{W, Call} || {W, Call} <- Zipped,
                                      Mod:precondition(State, Call)])
          end).
+
+%% -----------------------------------------------------------------------------
+%% Targeted command generation
+%% -----------------------------------------------------------------------------
+
+%% @doc A special PropEr type which generates targeted command sequences, while
+%% taking into consideration the frequency with which each command is picked,
+%% according to an abstract state machine specification. The function takes as
+%% input the name of a callback module, which contains the state machine
+%% specification. The initial state is computed by `Mod:initial_state/0'.
+%% The targeted generation is achieved through an optimization target given
+%% by the user using the ?MAXIMIZE or ?MINIMIZE macros.
+
+-spec targeted_commands(mod_name()) -> proper_types:type().
+targeted_commands(Mod) ->
+    Num = Mod:num_commands(),
+    Weights = lists:duplicate(Num, 1),
+    targeted_commands(Mod, Weights).
+
+%% @doc Similar to {@link targeted_commands/1}, but generated command sequences
+%% always have the initial weights given as an argument.
+
+-spec targeted_commands(mod_name(), weights()) -> proper_types:type().
+targeted_commands(Mod, Weights) ->
+    ?USERNF(targeted_weighted_commands(Mod, Weights), next_commands(Mod)).
+
+%% @private
+next_commands(Mod) ->
+    fun (_Cmds, _T) ->
+        Min = -5,
+        Max = 5,
+        Weights = proper_target:get_weights(),
+        NewWeights = lists:map(
+            fun (W) ->
+                Random = rand:uniform(1 + (Max - Min)) - (1 - Min),
+                NW = W + Random,
+                case NW >= 1 of
+                    true -> NW;
+                    false -> 1
+                end
+            end,
+            Weights
+        ),
+        proper_target:update_weights(NewWeights),
+        weighted_commands(Mod, NewWeights)
+    end.
+
+%% @private
+-spec targeted_weighted_commands(mod_name(), weights()) -> proper_types:type().
+targeted_weighted_commands(Mod, Weights) ->
+    ?LET(InitialState,
+         ?LAZY(begin
+                   proper_target:init_stateful(Weights),
+                   Mod:initial_state()
+               end),
+         ?SUCHTHAT(
+             Cmds,
+             ?LET(List,
+                  ?SIZED(Size,
+                         proper_types:noshrink(
+                            weighted_commands(Size, Mod, Weights,
+                                              InitialState, 1)
+                         )),
+                  proper_types:shrink_list(List)),
+             is_valid(Mod, InitialState, Cmds, []))).
 
 
 %% -----------------------------------------------------------------------------
