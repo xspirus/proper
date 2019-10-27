@@ -62,13 +62,14 @@
 
 -module(proper_target).
 
--export([targeted/1, update_target_uvs/2, use_strategy/2,
-         strategy/0, init_strategy/1, cleanup_strategy/0, get_shrinker/1]).
+-export([targeted/1, update_target_uvs/2, update_weights/1, use_strategy/2,
+         strategy/0, init_strategy/1, init_stateful/1, cleanup_strategy/0,
+         get_weights/0, get_shrinker/1]).
 
 -include_lib("proper_common.hrl").
 
 -export_type([key/0, fitness/0, tmap/0]).
--export_type([target_state/0, next_func/0, fitness_func/0,
+-export_type([target_state/0, weights/0, next_func/0, fitness_func/0,
               target/0]).
 
 %% -----------------------------------------------------------------------------
@@ -82,6 +83,7 @@
 -type threshold() :: fitness() | 'inf'.
 
 -type target_state() :: term().
+-type weights()      :: [pos_integer()].
 -type next_func()    :: fun ((target_state()) -> {target_state(), any()}).
 -type fitness_func() :: fun ((target_state(), fitness()) -> target_state()) | none.
 
@@ -94,6 +96,8 @@
 
 %% strategy global initializer
 -callback init_strategy(proper:setup_opts()) -> 'ok'.
+%% stateful global initializer
+-callback init_stateful(weights()) -> 'ok'.
 %% cleanup function
 -callback cleanup() -> 'ok'.
 %% target initializer
@@ -103,6 +107,9 @@
 %% store, and retrieve state
 -callback store_target(target_state()) -> 'ok'.
 -callback retrieve_target() -> target() | 'undefined'.
+%% store, and retrieve weights
+-callback store_weights(weights()) -> 'ok'.
+-callback retrieve_weights() -> weights() | 'undefined'.
 %% update the strategy with the fitness
 -callback update_fitness(fitness()) -> 'ok'.
 
@@ -124,6 +131,12 @@ targeted_gen(TMap) ->
 update_target_uvs(Fitness, Threshold) ->
   set_fitness(Fitness),
   check_threshold(Threshold, Fitness).
+
+%% @private
+-spec update_weights(weights()) -> 'ok'.
+update_weights(Weights) ->
+    Strategy = strategy(),
+    Strategy:store_weights(Weights).
 
 %% @private
 check_threshold(Threshold, Fitness) ->
@@ -168,6 +181,11 @@ init_strategy(Strat) ->
   OutputFun = fun(_, _) -> ok end,
   Strategy:init_strategy(#{numtests=>Steps, output_fun=>OutputFun}).
 
+-spec init_stateful(weights()) -> ok.
+init_stateful(Weights) ->
+    Strategy = strategy(),
+    Strategy:init_stateful(Weights).
+
 %% @private
 -spec cleanup_strategy() -> ok.
 cleanup_strategy() ->
@@ -186,6 +204,12 @@ get_target(TMap) ->
     StoredTarget ->
       StoredTarget
   end.
+
+%% @private
+-spec get_weights() -> weights() | 'undefined'.
+get_weights() ->
+    Strategy = strategy(),
+    Strategy:retrieve_weights().
 
 %% @private
 -spec update_target(target_state()) -> 'ok'.
