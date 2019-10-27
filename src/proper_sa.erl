@@ -40,10 +40,13 @@
 
 %% callbacks
 -export([init_strategy/1,
+         init_stateful/1,
          init_target/1,
          cleanup/0,
          store_target/1,
          retrieve_target/0,
+         store_weights/1,
+         retrieve_weights/0,
          update_fitness/1,
          get_shrinker/1
         ]).
@@ -97,11 +100,16 @@
          %% energy level
          last_energy = null                          :: proper_target:fitness() | null,
          last_update = 0                             :: integer(),
+         %% weights
+         last_weights = undefined                    :: proper_target:weights() | 'undefined',
+         current_weights = undefined                 :: proper_target:weights() | 'undefined',
+        %  %% stateful
+        %  stateful = false                            :: boolean(),
          %% temperature function
          temperature = 1.0                           :: proper_gen_next:temperature(),
          temp_func = fun(_, _, _, _, _) -> 1.0 end   :: temp_fun(),
          %% output function
-         output_fun = fun (_, _) -> ok end            :: output_fun()}).
+         output_fun = fun (_, _) -> ok end           :: output_fun()}).
 
 acceptance_function_standard(EnergyCurrent, EnergyNew, Temperature) ->
   case EnergyNew > EnergyCurrent of
@@ -168,12 +176,16 @@ get_last_fitness() ->
 -spec reset() -> ok.
 reset() ->
   Data = get(?SA_DATA),
+  Target = reset_target(Data#sa_data.target),
+  % this is used in case of stateful resets
+  % stateful first function changes the data
+  NewData = get(?SA_DATA),
   put(?SA_DATA,
-      Data#sa_data{target = reset_target(Data#sa_data.target),
-                   last_energy = null,
-                   last_update = 0,
-                   k_max = Data#sa_data.k_max - Data#sa_data.k_current,
-                   k_current = 0}).
+      NewData#sa_data{target = Target,
+                      last_energy = null,
+                      last_update = 0,
+                      k_max = NewData#sa_data.k_max - NewData#sa_data.k_current,
+                      k_current = 0}).
 
 -spec reset_target(proper_target:target()) -> proper_target:target().
 reset_target({S, N, F}) ->
@@ -182,12 +194,24 @@ reset_target({S, N, F}) ->
 
 %% @private
 -spec init_strategy(proper:setup_opts()) -> 'ok'.
-init_strategy(#{numtests:=Steps, output_fun:=OutputFun}) ->
+init_strategy(#{numtests := Steps, output_fun := OutputFun}) ->
   proper_gen_next:init(),
   SA_Data = #sa_data{k_max = Steps,
                      p = get_acceptance_function(OutputFun),
                      temp_func = get_temperature_function(OutputFun)},
   put(?SA_DATA, SA_Data), ok.
+
+%% @private
+-spec init_stateful(proper_target:weights()) -> 'ok'.
+init_stateful(Weights) ->
+    Data = get(?SA_DATA),
+    case Data of
+        undefined -> ok;
+        _ -> 
+            put(?SA_DATA,
+                Data#sa_data{last_weights = Weights}),
+            ok
+    end.
 
 %% @private
 -spec cleanup() -> ok.
@@ -237,6 +261,26 @@ retrieve_target() ->
   (get(?SA_DATA))#sa_data.target.
 
 %% @private
+-spec store_weights(proper_target:weights()) -> 'ok'.
+store_weights(Weights) ->
+    Data = get(?SA_DATA),
+    case Data of
+        undefined -> ok;
+        _ -> NewData = Data#sa_data{current_weights = Weights},
+             put(?SA_DATA, NewData),
+             ok
+    end.
+
+%% @private
+-spec retrieve_weights() -> proper_target:weights() | 'undefined'.
+retrieve_weights() ->
+    Data = get(?SA_DATA),
+    case Data of
+        undefined -> undefined;
+        _ -> Data#sa_data.last_weights
+    end.
+
+%% @private
 -spec update_fitness(proper_target:fitness()) -> 'ok'.
 update_fitness(Fitness) ->
   case get(?SA_DATA) of
@@ -245,22 +289,23 @@ update_fitness(Fitness) ->
                     temperature = Temperature,
                     temp_func = TempFunc} ->
       NewData = case (Data#sa_data.last_energy =:= null)
-		  orelse (Data#sa_data.p)(Data#sa_data.last_energy,
-					  Fitness,
-					  Temperature) of
+		              orelse (Data#sa_data.p)(Data#sa_data.last_energy,
+					                          Fitness,
+					                          Temperature) of
                   true ->
                     %% accept new state
                     proper_gen_next:update_caches(accept),
-                    NewTarget = update_target(Data#sa_data.target),
+                    NData = Data#sa_data{last_weights = Data#sa_data.current_weights},
+                    NewTarget = update_target(NData#sa_data.target),
                     %% calculate new temperature
                     {NewTemperature, AdjustedK} =
                       TempFunc(Temperature,
-                               Data#sa_data.last_energy,
+                               NData#sa_data.last_energy,
                                Fitness,
                                K_MAX,
                                K_CURRENT,
                                true),
-                    Data#sa_data{target = NewTarget,
+                    NData#sa_data{target = NewTarget,
                                  last_energy = Fitness,
                                  last_update = 0,
                                  k_current = AdjustedK,
