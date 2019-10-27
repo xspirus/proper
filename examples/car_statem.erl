@@ -54,7 +54,8 @@
          next_state/3]).
 -export([list_commands/1, num_commands/0]).
 %% properties
--export([prop_server_distance/0, prop_weighted_distance/0]).
+-export([prop_normal_distance/0, prop_weighted_distance/0,
+         prop_targeted_distance/0]).
 %% proper
 -export([test/1, test/2]).
 
@@ -251,7 +252,7 @@ next_state(S, _V, {call, _, refuel, [Amount]}) ->
 %% Properties
 %% -----------------------------------------------------------------------------
 
-prop_server_distance() ->
+prop_normal_distance() ->
     ?FORALL(Cmds, commands(?MODULE),
         ?TRAPEXIT(
             begin
@@ -284,6 +285,32 @@ prop_weighted_distance() ->
                     true -> 100 * Burnt / Distance;
                     false -> 0
                 end,
+                ?WHENFAIL(
+                    io:format("Distance: ~p~nConsumption: ~p~n", 
+                              [Distance, Consumption]),
+                    aggregate(command_names(Cmds),
+                              R =:= ok andalso (Distance < 1000 orelse 
+                                                Consumption > 10))
+                )
+            end)).
+
+prop_targeted_distance() ->
+    ?FORALL_TARGETED(Cmds, proper_statem:targeted_commands(?MODULE),
+        ?TRAPEXIT(
+            begin
+                start_link(),
+                {_H, S, R} = run_commands(?MODULE, Cmds),
+                stop(),
+                #state{distance = Distance, burnt = Burnt} = S,
+                Consumption = case Distance > 0 of
+                    true -> 100 * Burnt / Distance;
+                    false -> 0
+                end,
+                UV = case Consumption > 10 of
+                    true -> Distance * 0.1;
+                    false -> Distance
+                end,
+                ?MAXIMIZE(UV),
                 ?WHENFAIL(
                     io:format("Distance: ~p~nConsumption: ~p~n", 
                               [Distance, Consumption]),
