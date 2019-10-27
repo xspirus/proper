@@ -1775,7 +1775,10 @@ shrink(Shrunk, [RawImmInstance | Rest] = TestTail, {Type,Prop} = StrTest, Reason
        Shrinks, ShrinksLeft, State, Opts) ->
     ImmInstance = case proper_types:find_prop(user_nf, Type) of
 		      {ok, _} ->
-			  proper_gen:clean_instance(RawImmInstance);
+                  case proper_types:find_prop(parts_type, Type) of
+                      {ok, _} -> RawImmInstance;
+                      error -> proper_gen:clean_instance(RawImmInstance)
+                  end;
 		      error ->
 			  RawImmInstance
 		  end,
