@@ -103,8 +103,6 @@
          %% weights
          last_weights = undefined                    :: proper_target:weights() | 'undefined',
          current_weights = undefined                 :: proper_target:weights() | 'undefined',
-        %  %% stateful
-        %  stateful = false                            :: boolean(),
          %% temperature function
          temperature = 1.0                           :: proper_gen_next:temperature(),
          temp_func = fun(_, _, _, _, _) -> 1.0 end   :: temp_fun(),
@@ -207,7 +205,7 @@ init_stateful(Weights) ->
     Data = get(?SA_DATA),
     case Data of
         undefined -> ok;
-        _ -> 
+        _ ->
             put(?SA_DATA,
                 Data#sa_data{last_weights = Weights}),
             ok
@@ -287,7 +285,8 @@ update_fitness(Fitness) ->
     Data = #sa_data{k_current = K_CURRENT,
                     k_max = K_MAX,
                     temperature = Temperature,
-                    temp_func = TempFunc} ->
+                    temp_func = TempFunc,
+                    current_weights = Weights} ->
       NewData = case (Data#sa_data.last_energy =:= null)
 		              orelse (Data#sa_data.p)(Data#sa_data.last_energy,
 					                          Fitness,
@@ -295,17 +294,17 @@ update_fitness(Fitness) ->
                   true ->
                     %% accept new state
                     proper_gen_next:update_caches(accept),
-                    NData = Data#sa_data{last_weights = Data#sa_data.current_weights},
-                    NewTarget = update_target(NData#sa_data.target),
+                    NewTarget = update_target(Data#sa_data.target),
                     %% calculate new temperature
                     {NewTemperature, AdjustedK} =
                       TempFunc(Temperature,
-                               NData#sa_data.last_energy,
+                               Data#sa_data.last_energy,
                                Fitness,
                                K_MAX,
                                K_CURRENT,
                                true),
-                    NData#sa_data{target = NewTarget,
+                    Data#sa_data{target = NewTarget,
+                                 last_weights = Weights,
                                  last_energy = Fitness,
                                  last_update = 0,
                                  k_current = AdjustedK,
