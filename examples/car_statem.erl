@@ -56,9 +56,9 @@
 %% proper_statem
 -export([initial_state/0, command/1, precondition/2, postcondition/3,
          next_state/3]).
--export([list_commands/1, num_commands/0]).
+-export([list_commands/1]).
 %% properties
--export([prop_normal_distance/0]).
+-export([prop_normal_distance/0, prop_weighted_distance/0]).
 %% proper
 -export([test/1, test/2]).
 
@@ -201,8 +201,6 @@ list_commands(S) ->
    {call, ?MODULE, travel, [traveler()]},
    {call, ?MODULE, refuel, [refueler(Fuel)]}].
 
-num_commands() -> 4.
-
 precondition(#state{fuel = Fuel, speed = Speed}, {call, _, accelerate, _}) ->
   Fuel > ?MAX_FUEL * 0.1 andalso Speed < 200;
 precondition(#state{speed = Speed}, {call, _, brake, _}) ->
@@ -287,6 +285,28 @@ prop_normal_distance() ->
                                               Consumption > 10)))
              end)).
 
+
+%% This should produce a counter example in 1000 runs.
+prop_weighted_distance() ->
+  Weights = #{accelerate => 1, brake => 2, travel => 5, refuel => 1},
+  ?FORALL(Cmds, proper_statem:weighted_commands(?MODULE, Weights),
+          ?TRAPEXIT(
+             begin
+               start_link(),
+               {_H, S, R} = run_commands(?MODULE, Cmds),
+               stop(),
+               #state{distance = Distance, burnt = Burnt} = S,
+               Consumption = case Distance > 0 of
+                               true -> 100 * Burnt / Distance;
+                               false -> 0
+                             end,
+               ?WHENFAIL(
+                  io:format("Distance: ~p~nConsumption: ~p~n", 
+                            [Distance, Consumption]),
+                  aggregate(command_names(Cmds),
+                            R =:= ok andalso (Distance < 1000 orelse 
+                                              Consumption > 10)))
+             end)).
 
 %% -----------------------------------------------------------------------------
 %% Automatic Testing
