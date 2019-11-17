@@ -68,7 +68,7 @@
 %% -----------------------------------------------------------------------------
 
 
--record(gen_state, 
+-record(gen_state,
         {fuel :: float(),
          speed :: non_neg_integer()}).
 
@@ -113,16 +113,16 @@ init([]) ->
 
 handle_call({accelerate, Value}, _From, S) ->
   #gen_state{fuel = Fuel, speed = Speed} = S,
-  {Distance, Acceleration, Burnt} = 
+  {Distance, Acceleration, Burnt} =
     acceleration_calculations({Speed, Value}, Fuel),
-  {reply, {Distance, Burnt}, S#gen_state{fuel = Fuel - Burnt, 
+  {reply, {Distance, Burnt}, S#gen_state{fuel = Fuel - Burnt,
                                          speed = Speed + Acceleration}};
 
 handle_call({brake, Value}, _From, S) ->
   #gen_state{fuel = Fuel, speed = Speed} = S,
-  {Distance, Deceleration, Burnt} = 
+  {Distance, Deceleration, Burnt} =
     acceleration_calculations({Speed, -Value}, Fuel),
-  {reply, {Distance, Burnt}, S#gen_state{fuel = Fuel - Burnt, 
+  {reply, {Distance, Burnt}, S#gen_state{fuel = Fuel - Burnt,
                                          speed = Speed + Deceleration}};
 
 handle_call({travel, Distance}, _From, S) ->
@@ -132,7 +132,7 @@ handle_call({travel, Distance}, _From, S) ->
 
 handle_call({refuel, Amount}, _From, S) ->
   #gen_state{fuel = Fuel, speed = Speed} = S,
-  {Distance, _Deceleration, Burnt} = 
+  {Distance, _Deceleration, Burnt} =
     acceleration_calculations({Speed, -Speed}, Fuel),
   {reply, {Distance, Burnt}, S#gen_state{fuel = Fuel - Burnt + Amount, speed = 0}}.
 
@@ -220,7 +220,7 @@ next_state(S, _V, {call, _, accelerate, [Value]}) ->
          speed = Speed,
          distance = Distance,
          burnt = B} = S,
-  {Travelled, Acceleration, Burnt} = 
+  {Travelled, Acceleration, Burnt} =
     acceleration_calculations({Speed, Value}, Fuel),
   S#state{fuel = Fuel - Burnt,
           speed = Speed + Acceleration,
@@ -231,7 +231,7 @@ next_state(S, _V, {call, _, brake, [Value]}) ->
          speed = Speed,
          distance = Distance,
          burnt = B} = S,
-  {Travelled, Acceleration, Burnt} = 
+  {Travelled, Acceleration, Burnt} =
     acceleration_calculations({Speed, -Value}, Fuel),
   S#state{fuel = Fuel - Burnt,
           speed = Speed + Acceleration,
@@ -251,7 +251,7 @@ next_state(S, _V, {call, _, refuel, [Amount]}) ->
          speed = Speed,
          distance = Distance,
          burnt = B} = S,
-  {Travelled, Acceleration, Burnt} = 
+  {Travelled, Acceleration, Burnt} =
     acceleration_calculations({Speed, -Speed}, Fuel),
   S#state{fuel = Fuel - Burnt + Amount,
           speed = Speed + Acceleration,
@@ -278,10 +278,10 @@ prop_normal_distance() ->
                                false -> 0
                              end,
                ?WHENFAIL(
-                  io:format("Distance: ~p~nConsumption: ~p~n", 
+                  io:format("Distance: ~p~nConsumption: ~p~n",
                             [Distance, Consumption]),
                   aggregate(command_names(Cmds),
-                            R =:= ok andalso (Distance < 1000 orelse 
+                            R =:= ok andalso (Distance < 1000 orelse
                                               Consumption > 10)))
              end)).
 
@@ -301,10 +301,10 @@ prop_weighted_distance() ->
                                false -> 0
                              end,
                ?WHENFAIL(
-                  io:format("Distance: ~p~nConsumption: ~p~n", 
+                  io:format("Distance: ~p~nConsumption: ~p~n",
                             [Distance, Consumption]),
                   aggregate(command_names(Cmds),
-                            R =:= ok andalso (Distance < 1000 orelse 
+                            R =:= ok andalso (Distance < 1000 orelse
                                               Consumption > 10)))
              end)).
 
@@ -385,7 +385,7 @@ fuel_consumption(Speed) ->
 
 %% Fuel Consumption (acc - dec).
 fuel_consumption(Speed, Acceleration) ->
-  Consumptions = [fuel_consumption(S) * 
+  Consumptions = [fuel_consumption(S) *
                     fuel_acceleration_penalty(Acceleration)
                   || S <- intermediate_speeds(Speed, Acceleration)],
   ?AVG(Consumptions).

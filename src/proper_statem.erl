@@ -514,7 +514,7 @@ weighted_commands(Size, Mod, Weights, State, Count) ->
                        end)}])).
 
 %% @private
--spec select_command(mod_name(), weights(), 
+-spec select_command(mod_name(), weights(),
                      symbolic_state()) -> proper_types:type().
 select_command(Mod, Weights, State) ->
   ?LET(Cmds,
