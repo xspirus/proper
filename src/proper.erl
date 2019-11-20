@@ -1774,12 +1774,10 @@ shrink(Shrunk, [ImmInstance | Rest], {_Type,Prop}, Reason,
 	   Shrinks, ShrinksLeft, init, Opts);
 shrink(Shrunk, [RawImmInstance | Rest] = TestTail, {Type,Prop} = StrTest, Reason,
        Shrinks, ShrinksLeft, State, Opts) ->
-    ImmInstance = case proper_types:find_prop(user_nf, Type) of
-		      {ok, _} ->
-			  proper_gen:clean_instance(RawImmInstance);
-		      error ->
-			  RawImmInstance
-		  end,
+    ImmInstance = case proper_types:safe_is_instance(RawImmInstance, Type) of
+                    false -> proper_gen:clean_instance(RawImmInstance);
+                    _ -> RawImmInstance
+                  end,
     {NewImmInstances,NewState} = proper_shrink:shrink(ImmInstance, Type, State),
     %% TODO: Should we try fixing the nested ?FORALLs while shrinking? We could
     %%       also just produce new test tails.
