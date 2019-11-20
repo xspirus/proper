@@ -53,7 +53,7 @@
 %%%   <dt>`?USERNF(Gen, Nf)'</dt>
 %%%   <dd>This uses the neighborhood function `Nf' instead of PropEr's
 %%%     constructed neighborhood function for this generator. The neighborhood
-%%%     function `Fun' should be of type 
+%%%     function `Fun' should be of type
 %%%    `fun(term(), {Depth :: pos_integer(), Temperature::float()} -> term()'</dd>
 %%%   <dt>`?USERMATCHER(Gen, Matcher)'</dt>
 %%%   <dd>This overwrites the structural matching of PropEr with the user provided
@@ -72,7 +72,7 @@
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
--export([init_strategy/1, cleanup_strategy/0, init_target/1,
+-export([init_strategy/1, cleanup_strategy/0, init_target/1, init_stateful/0,
          update_uv/2, reset/0, targeted/1, get_shrinker/1]).
 
 
@@ -88,16 +88,17 @@
 -type target_state()  :: term().
 -type strategy_data() :: term().
 -type next_func()     :: fun ((target_state()) -> {target_state(), any()}).
--type fitness_func()  :: fun ((target_state(), fitness()) -> target_state()) 
+-type fitness_func()  :: fun ((target_state(), fitness()) -> target_state())
                        | none.
 
 -type target()   :: {target_state(), next_func(), fitness_func()}.
 -type strategy() :: module().
--type opts()     :: strategy() 
+-type opts()     :: strategy()
                   | #{search_steps := integer(), search_strategy := strategy()}.
 
 -record(state,
         {strategy           :: strategy(),
+         stateful = false   :: boolean(),
          target = undefined :: target_state() | undefined,
          data = undefined   :: strategy_data() | undefined}).
 -type state() :: #state{}.
@@ -116,13 +117,13 @@
 %% target initializer
 -callback init_target(tmap()) -> target_state().
 %% next function
--callback next(target_state(), strategy_data()) -> 
+-callback next(target_state(), strategy_data()) ->
   {any(), target_state(), strategy_data()}.
 %% update the strategy with the fitness
--callback update_fitness(fitness(), target_state(), strategy_data()) -> 
+-callback update_fitness(fitness(), target_state(), strategy_data()) ->
   {target_state(), strategy_data()}.
 %% reset strat
--callback reset(target_state(), strategy_data()) -> 
+-callback reset(target_state(), strategy_data()) ->
   {target_state(), strategy_data()}.
 
 
@@ -174,6 +175,16 @@ init_target(TMap) ->
   TargetserverPid = get('$targetserver_pid'),
   safe_call(TargetserverPid, {init_target, TMap}).
 
+%% @doc Initialize stateful strategy.
+
+-spec init_stateful() -> ok.
+init_stateful() ->
+  TargetserverPid = case get('$targetserver_pid') of
+    undefined -> self();
+    Pid -> Pid
+  end,
+  gen_server:cast(TargetserverPid, init_stateful).
+
 %% This produces the next gen instance from the next
 %% generator provided by the strategy. It will also
 %% update the state and data of the strategy.
@@ -192,7 +203,7 @@ get_shrinker(#{gen := Gen}) ->
   Gen.
 
 %% This is used to update the fitness value.
-%% Depending on the strategy and the fitness this 
+%% Depending on the strategy and the fitness this
 %% may accept the newly generated value.
 
 %% @private
@@ -220,8 +231,9 @@ reset() ->
 safe_call(Pid, Call) ->
   try
     gen_server:call(Pid, Call)
-  catch _:{noproc, _} ->
-    ok
+  catch
+    _:{noproc, _} ->
+      ok
   end.
 
 %% @private
@@ -256,13 +268,17 @@ init([{Strategy, Data}]) ->
 %% @private
 -spec handle_call(Request :: term(), From :: {pid(), Tag :: term()},
                   State :: state()) ->
-  {reply, Reply :: term(), NewState :: state()}.
+                     {reply, Reply :: term(), NewState :: state()}.
 handle_call(gen, _From, State) ->
   Strat = State#state.strategy,
   Target = State#state.target,
   Data = State#state.data,
   {NextValue, NewTarget, NewData} = Strat:next(Target, Data),
-  {reply, NextValue, State#state{target = NewTarget, data = NewData}};
+  Ret = case State#state.stateful of
+          true -> element(2, NextValue);
+          false -> NextValue
+        end,
+  {reply, Ret, State#state{target = NewTarget, data = NewData}};
 handle_call({init_target, TMap}, _From, State) ->
   Strat = State#state.strategy,
   Target = State#state.target,
@@ -293,13 +309,13 @@ handle_call(reset, _From, State) ->
 
 %% @private
 -spec handle_cast(Request :: term(), State :: state()) ->
-  {noreply, NewState :: term()}.
-handle_cast(_Request, State) ->
-  {noreply, State}.
+                     {noreply, NewState :: term()}.
+handle_cast(init_stateful, State) ->
+  {noreply, State#state{stateful = true}}.
 
 %% @private
 -spec handle_info(Info :: timeout | term(), State :: state()) ->
-  {noreply, NewState :: state()}.
+                     {noreply, NewState :: state()}.
 handle_info(_Info, State) ->
   {noreply, State}.
 
@@ -307,13 +323,13 @@ handle_info(_Info, State) ->
 -spec terminate(Reason :: (normal | shutdown | {shutdown, term()} |
                            term()),
                 State :: state()) ->
-  ok.
+                   ok.
 terminate(_Reason, _State) ->
   ok.
 
 %% @private
 -spec code_change(OldVsn :: (term() | {down, term()}), State :: state(),
                   Extra :: term()) ->
-  {ok, NewState :: state()}.
+                     {ok, NewState :: state()}.
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
