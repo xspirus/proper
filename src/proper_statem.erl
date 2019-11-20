@@ -224,7 +224,8 @@
 -module(proper_statem).
 
 -export([commands/1, commands/2, parallel_commands/1, parallel_commands/2,
-         more_commands/2, weighted_commands/1, weighted_commands/2]).
+         more_commands/2, weighted_commands/1, weighted_commands/2,
+         targeted_commands/1, targeted_commands/2]).
 -export([run_commands/2, run_commands/3, run_parallel_commands/2,
          run_parallel_commands/3]).
 -export([state_after/2, command_names/1, zip/2]).
@@ -527,6 +528,74 @@ select_command(Mod, Weights, State) ->
          proper_types:frequency([{W, Call} || {W, Call} <- Weighted,
                                               Mod:precondition(State, Call)])
        end).
+
+
+%% -----------------------------------------------------------------------------
+%% Targeted command generation
+%% -----------------------------------------------------------------------------
+
+%% @doc A special PropEr type which generates targeted command sequences, while
+%% taking into consideration the frequency with which each command is picked,
+%% according to an abstract state machine specification. The function takes as
+%% input the name of a callback module, which contains the state machine
+%% specification. The initial state is computed by `Mod:initial_state/0'.
+%% The targeted generation is achieved through an optimization target given
+%% by the user using the ?MAXIMIZE or ?MINIMIZE macros.
+
+-spec targeted_commands(mod_name()) -> proper_types:type().
+targeted_commands(Mod) ->
+  InitialState = Mod:initial_state(),
+  Commands = Mod:list_commands(InitialState),
+  Weights = maps:from_list([{Call, 1} || {call, _Mod, Call, _Args} <- Commands]),
+  targeted_commands(Mod, Weights).
+
+%% @doc Similar to {@link targeted_commands/1}, but generated command sequences
+%% always have the initial weights given as an argument.
+
+-spec targeted_commands(mod_name(), weights()) -> proper_types:type().
+targeted_commands(Mod, Weights) ->
+  ?USERNF(targeted_weighted_commands(Mod, Weights), next_commands(Mod)).
+
+%% @private
+next_commands(Mod) ->
+  fun ({Weights, Cmds}, {_Depth, Temp}) ->
+      Min = -5,
+      Max = 5,
+      NewWeights = maps:map(
+                     fun (_Key, W) ->
+                         Random = rand:uniform(1 + (Max - Min)) - (1 - Min),
+                         NW = W + Random,
+                         case NW >= 1 of
+                           true -> NW;
+                           false -> 1
+                         end
+                     end,
+                     Weights),
+      Size = length(Cmds),
+      Growth = ?RANDOM_MOD:uniform() * Temp + 1,
+      NewSize = case Size < 10 of
+                  true -> Size + 5;
+                  false -> round(Size * Growth)
+                end,
+      CmdsGen = ?LET(InitialState, ?LAZY(Mod:initial_state()),
+                     ?SUCHTHAT(
+                        NewCmds,
+                        ?LET(List,
+                             proper_types:noshrink(
+                               weighted_commands(NewSize, Mod,
+                                                 NewWeights, InitialState, 1)),
+                             proper_types:shrink_list(List)),
+                        is_valid(Mod, InitialState, NewCmds, []))),
+      proper_types:tuple([proper_types:exactly(NewWeights), CmdsGen])
+  end.
+
+%% @private
+-spec targeted_weighted_commands(mod_name(), weights()) -> proper_types:type().
+targeted_weighted_commands(Mod, Weights) ->
+  ?SHRINK(?LET(_, ?LAZY(proper_target:init_stateful()),
+               proper_types:tuple([proper_types:exactly(Weights),
+                                   weighted_commands(Mod, Weights)])),
+          [weighted_commands(Mod, Weights)]).
 
 
 %% -----------------------------------------------------------------------------
