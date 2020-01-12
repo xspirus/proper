@@ -522,7 +522,7 @@ select_command(Mod, Weights, State) ->
        ?LAZY(Mod:list_commands(State)),
        begin
          Weighted = lists:map(fun ({call, _Mod, Call, _Args} = SymbCall) ->
-                                  #{Call := Weight} = Weights,
+                                  Weight = maps:get(Call, Weights, 1),
                                   {Weight, SymbCall}
                               end,
                               Cmds),
