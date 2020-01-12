@@ -313,6 +313,12 @@ postcondition(#state{name = From, data = Data, mod = Mod}, Call, Res) ->
   To = cook_history(From, transition_target(Mod, From, Data, Call)),
   Mod:postcondition(From, To, Data, Call, Res).
 
+%% @private
+-spec list_commands(state()) -> [symbolic_call()].
+list_commands(#state{name = From, data = Data, mod = Mod}) ->
+  Transitions = get_transitions(Mod, From, Data),
+  [Call || {_, Call} <- Transitions].
+
 
 %% -----------------------------------------------------------------------------
 %% Utility functions
