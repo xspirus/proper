@@ -427,7 +427,7 @@ mk_parallel_testcase(Mod, Seq) ->
        end).
 
 -spec parallel_shrinker(mod_name(), command_list(), [command_list()]) ->
-                           proper_types:type().
+        proper_types:type().
 parallel_shrinker(Mod, [{init,I} = Init|Seq], Parallel) ->
   ?SUCHTHAT({Seq1, Parallel1},
             ?LET(ParInstances,
@@ -451,7 +451,7 @@ parallel_shrinker(Mod, Seq, Parallel) ->
               Parallel1)).
 
 -spec move_shrinker(command_list(), [command_list()], index()) ->
-                       proper_types:type().
+        proper_types:type().
 move_shrinker(Seq, Par, 1) ->
   ?SHRINK({Seq, Par},
           [{Seq ++ Slice, remove_slice(1, Slice, Par)}
@@ -498,7 +498,7 @@ weighted_commands(Mod, Weights) ->
           is_valid(Mod, InitialState, Cmds, []))).
 
 %% @private
--spec weighted_commands(size(), mod_name(), weights(), symbolic_state(),
+-spec weighted_commands(proper_gen:size(), mod_name(), weights(), symbolic_state(),
                         pos_integer()) -> proper_types:type().
 weighted_commands(Size, Mod, Weights, State, Count) ->
   ?LAZY(proper_types:frequency(
@@ -560,6 +560,7 @@ targeted_commands(Mod, Weights) ->
 %% @private
 next_commands(Mod) ->
   fun ({Weights, Cmds}, {_Depth, Temp}) ->
+      MaxSize = 42,
       Min = -5,
       Max = 5,
       NewWeights = maps:map(
@@ -576,7 +577,10 @@ next_commands(Mod) ->
       Growth = ?RANDOM_MOD:uniform() * Temp + 1,
       NewSize = case Size < 10 of
                   true -> Size + 5;
-                  false -> round(Size * Growth)
+                  false -> case round(Size * Growth) > MaxSize of
+                             true -> MaxSize;
+                             false -> round(Size * Growth)
+                           end
                 end,
       CmdsGen = ?LET(InitialState, ?LAZY(Mod:initial_state()),
                      ?SUCHTHAT(
@@ -633,7 +637,7 @@ targeted_weighted_commands(Mod, Weights) ->
 %% </ul>
 
 -spec run_commands(mod_name(), command_list()) ->
-                      {history(),dynamic_state(),statem_result()}.
+        {history(),dynamic_state(),statem_result()}.
 run_commands(Mod, Cmds) ->
   run_commands(Mod, Cmds, []).
 
@@ -645,13 +649,13 @@ run_commands(Mod, Cmds) ->
 %% `Value' during command execution.
 
 -spec run_commands(mod_name(), command_list(), proper_symb:var_values()) ->
-                      {history(),dynamic_state(),statem_result()}.
+        {history(),dynamic_state(),statem_result()}.
 run_commands(Mod, Cmds, Env) ->
   element(1, run(Mod, Cmds, Env)).
 
 %% @private
 -spec run(mod_name(), command_list(), proper_symb:var_values()) ->
-             {{history(),dynamic_state(),statem_result()}, proper_symb:var_values()}.
+        {{history(),dynamic_state(),statem_result()}, proper_symb:var_values()}.
 run(Mod, Cmds, Env) ->
   InitialState = get_initial_state(Mod, Cmds),
   try proper_symb:eval(Env, InitialState) of
@@ -664,7 +668,7 @@ run(Mod, Cmds, Env) ->
 
 -spec run_commands(command_list(), proper_symb:var_values(), mod_name(),
                    history(), dynamic_state()) ->
-                      {{history(),dynamic_state(),statem_result()}, proper_symb:var_values()}.
+        {{history(),dynamic_state(),statem_result()}, proper_symb:var_values()}.
 run_commands(Cmds, Env, Mod, History, State) ->
   case Cmds of
     [] ->
@@ -702,7 +706,7 @@ run_commands(Cmds, Env, Mod, History, State) ->
   end.
 
 -spec check_precondition(mod_name(), dynamic_state(), symbolic_call()) ->
-                            boolean() | proper:exception().
+        boolean() | proper:exception().
 check_precondition(Mod, State, Call) ->
   try Mod:precondition(State, Call)
   catch
@@ -711,7 +715,7 @@ check_precondition(Mod, State, Call) ->
     end.
 
 -spec check_postcondition(mod_name(), dynamic_state(), symbolic_call(), term()) ->
-                             boolean() | proper:exception().
+        boolean() | proper:exception().
 check_postcondition(Mod, State, Call, Res) ->
   try Mod:postcondition(State, Call, Res)
   catch
@@ -720,7 +724,7 @@ check_postcondition(Mod, State, Call, Res) ->
     end.
 
 -spec safe_apply(mod_name(), fun_name(), [term()]) ->
-                    {'ok', term()} | {'error', proper:exception()}.
+        {'ok', term()} | {'error', proper:exception()}.
 safe_apply(M, F, A) ->
   try apply(M, F, A) of
       Result -> {ok, Result}
@@ -748,7 +752,7 @@ safe_apply(M, F, A) ->
 %% </ul>
 
 -spec run_parallel_commands(mod_name(), parallel_testcase()) ->
-                               {history(),[parallel_history()],statem_result()}.
+        {history(),[parallel_history()],statem_result()}.
 run_parallel_commands(Mod, {_Sequential, _Parallel} = Testcase) ->
   run_parallel_commands(Mod, Testcase, []).
 
@@ -758,7 +762,7 @@ run_parallel_commands(Mod, {_Sequential, _Parallel} = Testcase) ->
 
 -spec run_parallel_commands(mod_name(), parallel_testcase(),
                             proper_symb:var_values()) ->
-                               {history(),[parallel_history()],statem_result()}.
+        {history(),[parallel_history()],statem_result()}.
 run_parallel_commands(Mod, {Sequential, Parallel}, Env) ->
   case run(Mod, Sequential, Env) of
     {{Seq_history, State, ok}, SeqEnv} ->
@@ -776,7 +780,7 @@ run_parallel_commands(Mod, {Sequential, Parallel}, Env) ->
 
 %% @private
 -spec execute(command_list(), proper_symb:var_values(), mod_name()) ->
-                 parallel_history().
+        parallel_history().
 execute([], _Env, _Mod) -> [];
 execute([{set, {var,V}, {call,M,F,A}} = Cmd|Rest], Env, Mod) ->
   M2 = proper_symb:eval(Env, M),
@@ -787,7 +791,7 @@ execute([{set, {var,V}, {call,M,F,A}} = Cmd|Rest], Env, Mod) ->
   [{Cmd,Res}|execute(Rest, Env2, Mod)].
 
 -spec pmap(fun((command_list()) -> parallel_history()), [command_list()]) ->
-              [parallel_history()].
+        [parallel_history()].
 pmap(F, L) ->
   await(spawn_jobs(F, L)).
 
@@ -866,7 +870,7 @@ state_after(Mod, Cmds) ->
   element(1, state_env_after(Mod, Cmds)).
 
 -spec state_env_after(mod_name(), command_list()) ->
-                         {symbolic_state(), [symbolic_var()]}.
+        {symbolic_state(), [symbolic_var()]}.
 state_env_after(Mod, Cmds) ->
   lists:foldl(fun({init,S}, _) ->
                   {S, []};
@@ -891,7 +895,7 @@ zip([], _) -> [].
 
 %% @private
 -spec is_valid(mod_name(), symbolic_state(), command_list(), [symbolic_var()]) ->
-                  boolean().
+        boolean().
 is_valid(_Mod, _State, [], _SymbEnv) -> true;
 is_valid(Mod, _State, [{init,S}|Cmds], _SymbEnv) ->
   is_valid(Mod, S, Cmds, _SymbEnv);
@@ -1014,7 +1018,7 @@ mk_dict([H|T], N)        -> [{N,H}|mk_dict(T, N+1)].
 
 %% @private
 -spec mk_first_comb(pos_integer(), non_neg_integer(), pos_integer()) ->
-                       combination().
+        combination().
 mk_first_comb(N, Len, W) ->
   mk_first_comb_tr(1, N, Len, [], W).
 
@@ -1084,7 +1088,7 @@ next_comb_tr(_MaxIndex, [X | Rest], Acc) ->
   lists:reverse(Rest, [X+1|Acc]).
 
 -spec remove_slice(index(), command_list(), [command_list(),...]) ->
-                      [command_list(),...].
+        [command_list(),...].
 remove_slice(Index, Slice, List) ->
   remove_slice_tr(Index, Slice, List, [], 1).
 

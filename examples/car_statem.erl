@@ -328,7 +328,6 @@ prop_targeted_distance() ->
                                false -> Distance
                              end,
                         ?MAXIMIZE(UV),
-                                                % io:format("~p~n", [length(Cmds)]),
                         ?WHENFAIL(
                            io:format("Distance: ~p~nConsumption: ~p~n",
                                      [Distance, Consumption]),

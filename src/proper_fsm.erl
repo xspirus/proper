@@ -156,6 +156,8 @@
 -export([command/1, precondition/2, next_state/3, postcondition/3, list_commands/1]).
 -export([target_states/4]).
 
+-export([weighted_commands/1, targeted_commands/1]).
+
 -include("proper_internal.hrl").
 
 
@@ -179,6 +181,9 @@
 -type history()      :: [{fsm_state(),cmd_result()}].
 -type tmp_command()  :: {'init',state()}
                       | {'set',symbolic_var(),symbolic_call()}.
+
+-type weights()      :: #{{state_name(), state_name(), symbolic_call()}
+                          => pos_integer()}.
 
 -record(state, {name :: state_name(),
                 data :: state_data(),
@@ -321,8 +326,142 @@ list_commands(#state{name = From, data = Data, mod = Mod}) ->
 
 
 %% -----------------------------------------------------------------------------
+%% Weighted command generation
+%% -----------------------------------------------------------------------------
+
+
+%% @private
+-spec weighted_commands(mod_name()) -> proper_types:type().
+weighted_commands(Mod) ->
+  weighted_commands(Mod, #{}).
+
+%% @private
+-spec weighted_commands(mod_name(), weights()) -> proper_types:type().
+weighted_commands(Mod, Weights) ->
+  put(weights, Weights),
+  ?LET(InitialState, ?LAZY(initial_state(Mod)),
+       ?SUCHTHAT(
+          Cmds,
+          ?LET(List,
+               ?SIZED(Size,
+                      proper_types:noshrink(
+                        weighted_commands(Size, Weights,
+                                          InitialState, 1))),
+               proper_types:shrink_list(List)),
+          proper_statem:is_valid(?MODULE, InitialState, Cmds, []))).
+
+%% @private
+-spec weighted_commands(proper_gen:size(), weights(), state(),
+                        pos_integer()) -> proper_types:type().
+weighted_commands(Size, Weights, State, Count) ->
+  {NewWeights, CallGen} = select_command(Weights, State),
+  put(weights, NewWeights),
+  ?LAZY(proper_types:frequency(
+          [{1, []},
+           {Size, ?LET(Call, CallGen,
+                       begin
+                         Var = {var, Count},
+                         NextState = next_state(State, Var, Call),
+                         ?LET(Cmds,
+                              weighted_commands(Size - 1,NewWeights,
+                                                NextState,Count + 1),
+                              [{set, Var, Call} | Cmds])
+                       end)}])).
+
+%% @private
+-spec select_command(weights(), state()) -> {weights(), proper_types:type()}.
+select_command(Weights, State) ->
+  Transitions = list_transitions(State),
+  NewWeights = lists:foldl(fun ({From, To, {call, _Mod, Call, _Args}}, W) ->
+                               Key = {From, To, Call},
+                               Value = maps:get(Key, W, 1),
+                               maps:put(Key, Value, W)
+                           end, Weights, Transitions),
+  Weighted = lists:map(fun ({_From, _To, SymbCall} = Transition) ->
+                           Weight = maps:get(Transition, NewWeights, 1),
+                           {Weight, SymbCall}
+                       end,
+                       Transitions),
+  {NewWeights,
+   ?LAZY(proper_types:frequency([{W, Call} || {W, Call} <- Weighted,
+                                              precondition(State, Call)]))}.
+
+
+%% -----------------------------------------------------------------------------
+%% Targeted command generation
+%% -----------------------------------------------------------------------------
+
+-spec targeted_commands(mod_name()) -> proper_types:type().
+targeted_commands(Mod) ->
+  targeted_commands(Mod, #{}).
+
+-spec targeted_commands(mod_name(), weights()) -> proper_types:type().
+targeted_commands(Mod, Weights) ->
+  ?USERNF(targeted_weighted_commands(Mod, Weights), next_commands(Mod)).
+
+%% @private
+next_commands(Mod) ->
+  fun ({Weights, Cmds}, {_Depth, Temp}) ->
+      MaxSize = 42,
+      Min = -5,
+      Max = 5,
+      NewWeights = maps:map(
+                     fun (_Key, W) ->
+                         Random = rand:uniform(1 + (Max - Min)) - (1 - Min),
+                         NW = W + Random,
+                         case NW >= 1 of
+                           true -> NW;
+                           false -> 1
+                         end
+                     end,
+                     Weights),
+      Size = length(Cmds),
+      Growth = ?RANDOM_MOD:uniform() * (1 - Temp) + 1,
+      NewSize = case Size < 10 of
+                  true -> Size + 5;
+                  false -> case round(Size * Growth) > MaxSize of
+                             true -> MaxSize;
+                             false -> round(Size * Growth)
+                           end
+                end,
+      CmdsGen = ?LET(InitialState, ?LAZY(initial_state(Mod)),
+                     ?SUCHTHAT(
+                        NewCmds,
+                        ?LET(List,
+                             proper_types:noshrink(
+                               weighted_commands(NewSize, NewWeights,
+                                                 InitialState, 1)),
+                             proper_types:shrink_list(List)),
+                        proper_statem:is_valid(?MODULE, InitialState,
+                                               NewCmds, []))),
+      NextWeights = ?LAZY(get(weights)),
+      proper_types:tuple([proper_types:exactly(NextWeights), CmdsGen])
+  end.
+
+%% @private
+targeted_weighted_commands(Mod, Weights) ->
+  NewWeights = ?LAZY(get(weights)),
+  ?SHRINK(?LET(_, ?LAZY(proper_target:init_stateful()),
+               proper_types:tuple([proper_types:exactly(NewWeights),
+                                   weighted_commands(Mod, Weights)])),
+          [weighted_commands(Mod, Weights)]).
+
+
+
+%% -----------------------------------------------------------------------------
 %% Utility functions
 %% -----------------------------------------------------------------------------
+
+list_transitions(S = #state{name = From, data = Data, mod = Mod}) ->
+  Transitions = get_transitions(Mod, From, Data),
+  Valid = lists:filter(fun ({_, Call}) ->
+                           precondition(S, Call)
+                       end, Transitions),
+  lists:map(fun ({_, Call}) ->
+                Target = transition_target(Mod, From, Data, Call),
+                To = cook_history(From, Target),
+                {From, To, Call}
+            end, Valid).
 
 -spec tmp_commands(mod_name(), command_list()) -> [tmp_command()].
 tmp_commands(Mod, Cmds) ->
