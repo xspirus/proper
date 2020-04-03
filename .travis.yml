@@ -1,30 +1,79 @@
 os: linux
 dist: xenial
 language: erlang
-script: "make all"
 branches:
   only:
     - develop
 
-otp_release:
-   - 22.3
-   - 22.0
-   - 21.3
-   - 21.0
-   - 20.3
-   - 20.0
-   - 19.3
+_otp: &otp
+  - 22.3
+  - 22.0
+  - 21.3
+  - 21.0
+  - 20.3
+  - 20.0
+  - 19.3
 
-# coverage tests
+_compilation: &compilation
+  stage: Compilation
+  script: rebar3 compile
+  otp_release: 22.3
+
+_typecheck: &typecheck
+  stage: Dialyzer
+  script: rebar3 dialyzer
+  otp_release: 22.3
+
+_documentation: &documentation
+  stage: Documentation
+  script: make doc
+  otp_release: 22.3
+
+_test: &test
+  stage: Test
+  script: rebar3 eunit
+  otp_release: 22.3
+
+_coverage: &coverage
+  stage: Coverage
+  otp_release: 22.3
+  script: rebar3 do eunit -c, cover, covertool generate
+  after_success:
+    - for f in _build/test/covertool/*.xml; do cp "$f" "$(basename ${f%.xml}.coverage.xml)"; done
+    - bash <(curl -s https://codecov.io/bash)
+
 jobs:
   include:
-    - language: erlang
-      otp_release: 22.3
-      env: COVER=true
-      after_success:
-        - for f in _build/test/covertool/*.xml; do cp "$f" $(basename "${f%.xml}.coverage.xml"); done
-        - bash <(curl -s https://codecov.io/bash)
+    - <<: *compilation
+    - <<: *compilation
+      otp_release: 22.0
+    - <<: *compilation
+      otp_release: 21.3
+    - <<: *compilation
+      otp_release: 21.0
+    - <<: *compilation
+      otp_release: 20.3
+    - <<: *compilation
+      otp_release: 20.0
+    - <<: *compilation
+      otp_release: 20.0
+    - <<: *typecheck
+    - <<: *documentation
+    - <<: *test
+    - <<: *test
+      otp_release: 22.0
+    - <<: *test
+      otp_release: 21.3
+    - <<: *test
+      otp_release: 21.0
+    - <<: *test
+      otp_release: 20.3
+    - <<: *test
+      otp_release: 20.0
+    - <<: *test
+      otp_release: 20.0
+    - <<: *coverage
 
 cache:
-   directories:
-   - .plt
+  directories:
+    - .plt
