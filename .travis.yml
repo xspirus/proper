@@ -2,6 +2,9 @@ os: linux
 dist: xenial
 language: erlang
 script: "make all"
+branches:
+  only:
+    - develop
 
 otp_release:
    - 22.3
