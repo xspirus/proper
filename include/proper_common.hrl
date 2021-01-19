@@ -68,5 +68,6 @@
 
 -define(MAXIMIZE(Fitness), proper_target:update_uv(Fitness, inf)).
 -define(MINIMIZE(Fitness), ?MAXIMIZE(-Fitness)).
+-define(BOUND(Fitness, Bound), proper_target:update_uv(Fitness, Bound)).
 -define(USERNF(Type, NF), proper_gen_next:set_user_nf(Type, NF)).
 -define(USERMATCHER(Type, Matcher), proper_gen_next:set_matcher(Type, Matcher)).

@@ -82,7 +82,8 @@
 -type strategy()     :: mod_name().
 -type fitness()      :: number().
 -type search_steps() :: pos_integer().
--type threshold()    :: fitness() | 'inf'.
+-type bound()        :: {fitness(), fitness()}.
+-type threshold()    :: fitness() | 'inf' | bound().
 
 -type target_state()  :: term().
 -type strategy_data() :: term().
@@ -100,7 +101,7 @@
          data = undefined   :: strategy_data() | undefined}).
 -type state() :: #state{}.
 
--export_type([strategy/0, fitness/0, search_steps/0]).
+-export_type([strategy/0, fitness/0, bound/0, search_steps/0]).
 -export_type([target_state/0, strategy_data/0, next_fun/0, fitness_fun/0,
               opts/0]).
 
@@ -120,6 +121,9 @@
 -callback get_shrinker(target_state(), strategy_data()) -> proper_types:type().
 %% update the strategy with the fitness
 -callback update_fitness(fitness(), target_state(), strategy_data()) ->
+  {target_state(), strategy_data()}.
+%% update the strategy with the bounded fitness
+-callback update_bound(fitness(), bound(), target_state(), strategy_data()) ->
   {target_state(), strategy_data()}.
 %% reset strat
 -callback reset(target_state(), strategy_data()) ->
@@ -222,6 +226,9 @@ get_shrinker(Type) ->
 
 %% @private
 -spec update_uv(fitness(), threshold()) -> boolean().
+update_uv(Fitness, {Lower, Upper}) ->
+  TargetserverPid = get('$targetserver_pid'),
+  safe_call(TargetserverPid, {update_bound, Fitness, {Lower, Upper}});
 update_uv(Fitness, Threshold) ->
   TargetserverPid = get('$targetserver_pid'),
   safe_call(TargetserverPid, {update_fitness, Fitness}),
@@ -305,6 +312,11 @@ handle_call({update_pdict, KVs}, _From, State) ->
 handle_call({update_fitness, Fitness}, _From, State) ->
   #state{strategy = Strat, target = Target, data = Data} = State,
   {NewTarget, NewData} = Strat:update_fitness(Fitness, Target, Data),
+  {reply, ok, State#state{target = NewTarget, data = NewData}};
+
+handle_call({update_bound, Fitness, Bound}, _From, State) ->
+  #state{strategy = Strat, target = Target, data = Data} = State,
+  {NewTarget, NewData} = Strat:update_bound(Fitness, Bound, Target, Data),
   {reply, ok, State#state{target = NewTarget, data = NewData}};
 
 handle_call(reset, _From, State) ->

@@ -45,7 +45,7 @@
 %% -----------------------------------------------------------------------------
 
 -export([init_strategy/1, init_target/2, next/2,
-         get_shrinker/2, update_fitness/3, reset/2]).
+         get_shrinker/2, update_fitness/3, update_bound/4, reset/2]).
 
 %% -----------------------------------------------------------------------------
 %% Macros
@@ -74,6 +74,10 @@
 -type accept_fun() :: fun((proper_target:fitness(), proper_target:fitness(),
                            proper_gen_next:temperature()) -> boolean()).
 
+-type accept_fun_bounded() :: fun((proper_target:fitness(),
+                                   proper_target:bound(),
+                                   proper_gen_next:temperature()) -> boolean()).
+
 %% -----------------------------------------------------------------------------
 %% Records
 %% -----------------------------------------------------------------------------
@@ -87,17 +91,18 @@
 
 -record(sa_data,
         {%% search steps
-         k_max = 0                      :: k(),
+         k_max = 0                       :: k(),
          %% current step
-         k_current = 0                  :: k(),
-         %% acceptance function
-         p = fun (_, _, _) -> false end :: accept_fun(),
+         k_current = 0                   :: k(),
+         %% acceptance functions
+         p = fun (_, _, _) -> false end  :: accept_fun(),
+         pb = fun (_, _, _) -> false end :: accept_fun_bounded(),
          %% fitness
-         last_energy = null             :: proper_target:fitness() | null,
-         last_update = 0                :: integer(),
+         last_energy = null              :: proper_target:fitness() | null,
+         last_update = 0                 :: integer(),
          %% temperature
-         temperature = 1.0              :: proper_gen_next:temperature(),
-         temp_func = ?TEMP_FUN          :: temp_fun()}).
+         temperature = 1.0               :: proper_gen_next:temperature(),
+         temp_func = ?TEMP_FUN           :: temp_fun()}).
 -type sa_data() :: #sa_data{}.
 
 %% -----------------------------------------------------------------------------
@@ -112,6 +117,7 @@
 init_strategy(Steps) ->
   #sa_data{k_max = Steps,
            p = get_acceptance_function(),
+           pb = get_acceptance_function_bounded(),
            temp_func = get_temperature_function()}.
 
 %% Initialize target state based on the initial generator
@@ -213,6 +219,50 @@ update_fitness(Fitness, Target, Data) ->
                             temperature = NewTemperature}}
   end.
 
+%% @private
+-spec update_bound(proper_target:fitness(), proper_target:bound(), sa_target(), sa_data()) ->
+        {sa_target(), sa_data()}.
+update_bound(Fitness, Bound, Target, Data) ->
+  #sa_data{k_current = K_Current,
+           k_max = K_Max,
+           last_energy = Energy,
+           temperature = Temperature,
+           temp_func = TempFunc,
+           pb = P} = Data,
+  case (Energy =:= null) orelse P(Fitness, Bound, Temperature) of
+    true ->
+      %% accept new state
+      proper_gen_next:update_caches(accept),
+      %% calculate new temperature
+      {NewTemperature, AdjustedK} =
+        TempFunc(Temperature,
+                 Energy,
+                 Fitness,
+                 K_Max,
+                 K_Current,
+                 true),
+      NewTarget =
+        Target#sa_target{last_generated = Target#sa_target.current_generated},
+      {NewTarget, Data#sa_data{last_energy = Fitness,
+                               last_update = 0,
+                               k_current = AdjustedK,
+                               temperature = NewTemperature}};
+    false ->
+      %% reject new state
+      proper_gen_next:update_caches(reject),
+      %% calculate new temperature
+      {NewTemperature, AdjustedK} =
+        TempFunc(Temperature,
+                 Energy,
+                 Fitness,
+                 K_Max,
+                 K_Current,
+                 false),
+      {Target, Data#sa_data{last_update = Data#sa_data.last_update + 1,
+                            k_current = AdjustedK,
+                            temperature = NewTemperature}}
+  end.
+
 %% Restart the search strategy from a random input.
 
 %% @private
@@ -251,6 +301,33 @@ acceptance_function_hillclimbing(EnergyCurrent, EnergyNew, _Temperature) ->
   %% Hill-Climbing
   EnergyNew > EnergyCurrent.
 
+acceptance_function_standard_bounded(EnergyNew, {Lower, Upper}, Temperature) ->
+  case EnergyNew >= Lower andalso EnergyNew =< Upper of
+    true ->
+      %% always accept better results
+      true;
+    false ->
+      %% probabilistic acceptance (always between 0.0 and 0.5)
+      AcceptanceProbability =
+        try
+          case EnergyNew < Lower of
+            true ->
+              math:exp(-(Lower - EnergyNew) / Temperature);
+            false ->
+              math: exp((Upper - EnergyNew) / Temperature)
+          end
+        catch
+          error:badarith -> 0.0
+        end,
+      %% if random probability is less, accept
+      ?RANDOM_PROBABILITY < AcceptanceProbability
+  end.
+
+acceptance_function_hillclimbing_bounded(EnergyNew, {Lower, Upper},
+                                         _Temperature) ->
+  %% Hill-Climbing
+  EnergyNew >= Lower andalso EnergyNew =< Upper.
+
 temperature_function_standard_sa(_OldTemperature,
                                  _OldEnergyLevel,
                                  _NewEnergyLevel,
@@ -282,4 +359,17 @@ get_acceptance_function() ->
       end;
     undefined -> fun acceptance_function_standard/3;
     _ -> fun acceptance_function_standard/3
+  end.
+
+get_acceptance_function_bounded() ->
+  case get(proper_sa_acceptfunc_bounded) of
+    default -> fun acceptance_function_standard_bounded/3;
+    hillclimbing -> fun acceptance_function_hillclimbing_bounded/3;
+    Fun when is_function(Fun) ->
+      case proplists:lookup(arity, erlang:fun_info(Fun)) of
+        {arity, 3} -> Fun;
+        _ -> fun acceptance_function_standard_bounded/3
+      end;
+    undefined -> fun acceptance_function_standard_bounded/3;
+    _ -> fun acceptance_function_standard_bounded/3
   end.
