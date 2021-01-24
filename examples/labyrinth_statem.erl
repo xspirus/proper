@@ -35,7 +35,7 @@
 %% -----------------------------------------------------------------------------
 
 %% API
--export([start_link/1, stop/0, move/1]).
+-export([start_link/1, stop/0, up/1, right/1, down/1, left/1]).
 %% Helpers
 -export([maze/1]).
 %% gen_server callbacks
@@ -84,9 +84,21 @@ start_link(Maze) ->
 stop() ->
   gen_server:stop(?NAME).
 
--spec move(step()) -> brick().
-move(Step) ->
-  gen_server:call(?NAME, Step).
+-spec up(integer()) -> brick().
+up(Num) ->
+  gen_server:call(?NAME, {up, Num}).
+
+-spec right(integer()) -> brick().
+right(Num) ->
+  gen_server:call(?NAME, {right, Num}).
+
+-spec down(integer()) -> brick().
+down(Num) ->
+  gen_server:call(?NAME, {down, Num}).
+
+-spec left(integer()) -> brick().
+left(Num) ->
+  gen_server:call(?NAME, {left, Num}).
 
 %% -----------------------------------------------------------------------------
 %% gen_server callbacks
@@ -96,19 +108,9 @@ init([Maze]) ->
   {Entrance, Exit, Walls} = draw_map(Maze),
   {ok, #state{exit = Exit, position = Entrance, walls = Walls}}.
 
-handle_call(Step, _From, S) ->
+handle_call({Step, Num}, _From, S) ->
   #state{exit = Exit, position = Position, walls = Walls} = S,
-  {X, Y} = Position,
-  NextPos = case Step of
-              up    -> {X - 1, Y};
-              right -> {X, Y + 1};
-              down  -> {X + 1, Y};
-              left  -> {X, Y - 1}
-            end,
-  NewPos = case sets:is_element(NextPos, Walls) of
-             true  -> Position;
-             false -> NextPos
-           end,
+  NewPos = follow_steps(lists:duplicate(Num, Step), Position, Exit, Walls),
   Brick = case NewPos of
             Exit -> exit;
             _    -> none
@@ -128,6 +130,13 @@ code_change(_OldVsn, S, _Extra) ->
   {ok, S}.
 
 %% -----------------------------------------------------------------------------
+%% Generators
+%% -----------------------------------------------------------------------------
+
+numsteps() ->
+  integer(1, 5).
+
+%% -----------------------------------------------------------------------------
 %% proper_statem callbacks
 %% -----------------------------------------------------------------------------
 
@@ -136,40 +145,24 @@ initial_state() ->
   #state{exit = Exit, position = Entrance, walls = Walls}.
 
 command(_S) ->
-  oneof([{call, ?MODULE, move, [up]},
-         {call, ?MODULE, move, [right]},
-         {call, ?MODULE, move, [down]},
-         {call, ?MODULE, move, [left]}]).
+  oneof([{call, ?MODULE, up, [numsteps()]},
+         {call, ?MODULE, right, [numsteps()]},
+         {call, ?MODULE, down, [numsteps()]},
+         {call, ?MODULE, left, [numsteps()]}]).
 
-precondition(State, {call, _, move, [Step]}) ->
+precondition(State, {call, _, Step, [Num]}) ->
   #state{position = Position, walls = Walls} = State,
-  {X, Y} = Position,
-  NextPos = case Step of
-              up    -> {X - 1, Y};
-              right -> {X, Y + 1};
-              down  -> {X + 1, Y};
-              left  -> {X, Y - 1}
-            end,
-  not sets:is_element(NextPos, Walls);
+  not steps_hit_wall(lists:duplicate(Num, Step), Position, Walls);
 precondition(_, _) -> true.
 
-postcondition(_State, {call, _, move, [_Step]}, Res) ->
+postcondition(_State, {call, _, _Step, [_Num]}, Res) ->
   Res =/= wall andalso Res =/= exit;
 postcondition(_, _, _) -> true.
 
-next_state(State, _V, {call, _, move, [Step]}) ->
-  #state{position = Position, walls = Walls} = State,
-  {X, Y} = Position,
-  NextPos = case Step of
-              up    -> {X - 1, Y};
-              right -> {X, Y + 1};
-              down  -> {X + 1, Y};
-              left  -> {X, Y - 1}
-            end,
-  case sets:is_element(NextPos, Walls) of
-    true  -> State;
-    false -> State#state{position = NextPos}
-  end.
+next_state(State, _V, {call, _, Step, [Num]}) ->
+  #state{exit = Exit, position = Position, walls = Walls} = State,
+  NextPos = follow_steps(lists:duplicate(Num, Step), Position, Exit, Walls),
+  State#state{position = NextPos}.
 
 %% -----------------------------------------------------------------------------
 %% Properties
@@ -184,7 +177,7 @@ prop_labyrinth(Maze) ->
             {_H, _S, R} = run_commands(?MODULE, Cmds),
             stop(),
             ?WHENFAIL(io:format("~w~n", [path(Cmds)]),
-                      aggregate(command_names(normalize(Cmds)), R =:= ok))
+                      aggregate(command_names(Cmds), R =:= ok))
           end).
 
 prop_labyrinth_targeted(Maze) ->
@@ -199,7 +192,7 @@ prop_labyrinth_targeted(Maze) ->
        #state{exit = E, position = P} = S,
        ?MINIMIZE(distance(P, E)),
        ?WHENFAIL(io:format("~w~n", [path(Cmds)]),
-                 aggregate(command_names(normalize(Cmds)), R =:= ok))
+                 aggregate(command_names(Cmds), R =:= ok))
      end).
 
 %% -----------------------------------------------------------------------------
@@ -285,22 +278,41 @@ draw_line([$E | T], {_, Exit, Walls}, X, Y) ->
 distance({X1, Y1}, {X2, Y2}) ->
   abs(X1 - X2) + abs(Y1 - Y2).
 
+-spec follow_steps([step()], position(), position(), walls()) -> position().
+follow_steps(_Steps, Exit, Exit, _Walls) -> Exit;
+follow_steps([], Position, _Exit, _Walls) -> Position;
+follow_steps([Step | Steps], Position, Exit, Walls) ->
+  NextPos = make_step(Step, Position),
+  NewPos = case sets:is_element(NextPos, Walls) of
+             true  -> Position;
+             false -> NextPos
+           end,
+  follow_steps(Steps, NewPos, Exit, Walls).
+
+-spec steps_hit_wall([step()], position(), walls()) -> boolean().
+steps_hit_wall([], _Position, _Walls) -> false;
+steps_hit_wall([Step | Steps], Position, Walls) ->
+  NextPos = make_step(Step, Position),
+  case sets:is_element(NextPos, Walls) of
+    true  -> true;
+    false -> steps_hit_wall(Steps, NextPos, Walls)
+  end.
+
+-spec make_step(step(), position()) -> position().
+make_step(Step, {X, Y}) ->
+  case Step of
+    up    -> {X - 1, Y};
+    right -> {X, Y + 1};
+    down  -> {X + 1, Y};
+    left  -> {X, Y - 1}
+  end.
+
 path(Cmds) ->
   path(Cmds, []).
 
 path([], Path) ->
   lists:reverse(Path);
-path([{set, _V, {call, _, move, [Step]}} | Cmds], Path) ->
-  path(Cmds, [Step | Path]);
+path([{set, _V, {call, _, Step, [Num]}} | Cmds], Path) ->
+  path(Cmds, lists:duplicate(Num, Step) ++ Path);
 path([_ | Cmds], Path) ->
   path(Cmds, Path).
-
-normalize(Cmds) ->
-  normalize(Cmds, []).
-
-normalize([], Normalized) ->
-  lists:reverse(Normalized);
-normalize([{set, V, {call, Mod, move, [Step]}} | Cmds], Normalized) ->
-  normalize(Cmds, [{set, V, {call, Mod, Step, []}} | Normalized]);
-normalize([Cmd | Cmds], Normalized) ->
-  normalize(Cmds, [Cmd | Normalized]).
