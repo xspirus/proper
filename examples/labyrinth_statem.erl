@@ -45,7 +45,7 @@
 -export([initial_state/0, command/1, precondition/2, postcondition/3,
          next_state/3]).
 %% Properties
--export([prop_labyrinth/1, prop_labyrinth_targeted/1]).
+-export([prop_random/1, prop_targeted/1]).
 
 %% -----------------------------------------------------------------------------
 %% Defines
@@ -78,27 +78,28 @@
 
 -spec start_link(maze()) -> pid().
 start_link(Maze) ->
-  gen_server:start_link({local, ?NAME}, ?MODULE, [Maze], []).
+  {ok, Pid} = gen_server:start_link(?MODULE, [Maze], []),
+  put('$server', Pid).
 
 -spec stop() -> ok.
 stop() ->
-  gen_server:stop(?NAME).
+  gen_server:stop(get('$server')).
 
 -spec up(integer()) -> brick().
 up(Num) ->
-  gen_server:call(?NAME, {up, Num}).
+  gen_server:call(get('$server'), {up, Num}).
 
 -spec right(integer()) -> brick().
 right(Num) ->
-  gen_server:call(?NAME, {right, Num}).
+  gen_server:call(get('$server'), {right, Num}).
 
 -spec down(integer()) -> brick().
 down(Num) ->
-  gen_server:call(?NAME, {down, Num}).
+  gen_server:call(get('$server'), {down, Num}).
 
 -spec left(integer()) -> brick().
 left(Num) ->
-  gen_server:call(?NAME, {left, Num}).
+  gen_server:call(get('$server'), {left, Num}).
 
 %% -----------------------------------------------------------------------------
 %% gen_server callbacks
@@ -168,7 +169,7 @@ next_state(State, _V, {call, _, Step, [Num]}) ->
 %% Properties
 %% -----------------------------------------------------------------------------
 
-prop_labyrinth(Maze) ->
+prop_random(Maze) ->
   {Entrance, Exit, Walls} = draw_map(Maze),
   State = #state{exit = Exit, position = Entrance, walls = Walls},
   ?FORALL(Cmds, commands(?MODULE, State),
@@ -180,7 +181,7 @@ prop_labyrinth(Maze) ->
                       aggregate(command_names(Cmds), R =:= ok))
           end).
 
-prop_labyrinth_targeted(Maze) ->
+prop_targeted(Maze) ->
   {Entrance, Exit, Walls} = draw_map(Maze),
   State = #state{exit = Exit, position = Entrance, walls = Walls},
   ?FORALL_TARGETED(
@@ -199,7 +200,7 @@ prop_labyrinth_targeted(Maze) ->
 %% Helpers
 %% -----------------------------------------------------------------------------
 
--spec maze(0..2) -> maze().
+-spec maze(0..3) -> maze().
 maze(0) ->
   ["#########",
    "#X     E#",
@@ -252,6 +253,31 @@ maze(2) ->
    "#                                                                    #",
    "################################                                     #",
    "#                                     E                              #",
+   "#                                                                    #",
+   "######################################################################"];
+maze(3) ->
+  ["######################################################################",
+   "#                                                                    #",
+   "#   X                                                                #",
+   "#                                  #####                             #",
+   "#                                  #####                             #",
+   "#        #####                     #####        #####                #",
+   "#        #####                                  #####                #",
+   "#        #####                                  #####                #",
+   "#                          #####                                     #",
+   "#                          #####                                     #",
+   "#                          #####                                     #",
+   "#                                         #####          ##########  #",
+   "#                                         #####          ##########  #",
+   "#             #####                       #####          ##########  #",
+   "#             #####                                                  #",
+   "#             #####                                                  #",
+   "#                                #####                               #",
+   "#                                #####                               #",
+   "#                                #####         #####                 #",
+   "#                                              #####                 #",
+   "#                                              #####                 #",
+   "#                                                              E     #",
    "#                                                                    #",
    "######################################################################"].
 

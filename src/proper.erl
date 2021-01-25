@@ -570,6 +570,7 @@
 	       performed :: pos_integer() | 'undefined',
 	       actions   :: fail_actions()}).
 -record(fail, {reason    :: fail_reason() | 'undefined',
+         samples         :: [sample()],
 	       bound     :: imm_testcase() | counterexample(),
 	       actions   :: fail_actions(),
 	       performed :: pos_integer() | 'undefined'}).
@@ -1312,9 +1313,10 @@ perform(Passed, ToPass, TriesLeft, Test, Samples, Printers,
 	    grow_size(Opts),
 	    perform(Passed + 1, ToPass, TriesLeft - 1, Test,
 		    NewSamples, NewPrinters, Opts);
-	#fail{} = FailResult ->
+	#fail{samples = MoreSamples} = FailResult ->
 	    Print("!", []),
-	    FailResult#fail{performed = Passed + 1};
+	    NewSamples = add_samples(MoreSamples, Samples),
+	    FailResult#fail{performed = Passed + 1, samples = NewSamples};
 	{error, rejected} ->
 	    Print("x", []),
 	    grow_size(Opts),
@@ -1647,9 +1649,9 @@ create_pass_result(#ctx{samples = Samples, printers = Printers, actions= Actions
 
 -spec create_fail_result(ctx(), fail_reason()) ->
 	  #fail{performed :: 'undefined'}.
-create_fail_result(#ctx{bound = Bound, actions = Actions}, Reason) ->
+create_fail_result(#ctx{bound = Bound, actions = Actions, samples = Samples}, Reason) ->
     #fail{reason = Reason, bound = lists:reverse(Bound),
-	  actions = lists:reverse(Actions)}.
+	  actions = lists:reverse(Actions), samples = lists:reverse(Samples)}.
 
 -spec child(pid(), delayed_test(), ctx(), opts()) -> 'ok'.
 child(Father, Prop, Ctx, Opts) ->
