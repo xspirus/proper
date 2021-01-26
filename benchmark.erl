@@ -418,8 +418,11 @@ all_test({M, F, A}, Nums, Tests, Opts) ->
     fun({N, _, _, _, Counts}) ->
        Cnts =
          lists:map(fun(Cmd) ->
-                      {Count, Cmd} = lists:keyfind(Cmd, 2, Counts),
-                      Count
+                      CountCmd = lists:keyfind(Cmd, 2, Counts),
+                      case CountCmd of
+                        {Count, Cmd} -> Count;
+                        false -> 0
+                      end
                    end,
                    Commands),
        CntsCSV = lists:map(fun int_to_string/1, [N | Cnts]),
