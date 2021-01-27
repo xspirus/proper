@@ -446,6 +446,84 @@ all_test({M, F, A}, Nums, Tests, Opts) ->
   file:close(PerformanceFile),
   ok.
 
+all_test_args(Args, {M, F}) ->
+  all_test_args(Args, {M, F}, [100]).
+
+all_test_args(Args, {M, F}, Nums) ->
+  all_test_args(Args, {M, F}, Nums, 100).
+
+all_test_args(Args, {M, F}, Nums, Tests) ->
+  all_test_args(Args, {M, F}, Nums, Tests, [quiet, noshrink]).
+
+all_test_args(Args, {M, F}, Nums, Tests, Opts) ->
+  ArgNames = [element(1, Arg) || Arg <- Args],
+  NewArgs = transpose([element(2, Arg) || Arg <- Args]),
+  Stats =
+    lists:flatten([all_test_args_helper({M, F, A}, Nums, Tests, Opts)
+                   || A <- NewArgs]),
+  Commands = get_commands(element(6, lists:nth(1, lists:reverse(Stats)))),
+  {ok, CommandsFile} =
+    file:open(
+      io_lib:format("~s_~s.csv", [mfa_to_filename(M, F, []), "commands"]),
+      [write]),
+  io:format(CommandsFile, "tests,~s~n", [list_to_csv(Commands)]),
+  WriteCommands =
+    fun({N, _, _, _, _, Counts}) ->
+       Cnts =
+         lists:map(fun(Cmd) ->
+                      CountCmd = lists:keyfind(Cmd, 2, Counts),
+                      case CountCmd of
+                        {Count, Cmd} -> Count;
+                        false -> 0
+                      end
+                   end,
+                   Commands),
+       CntsCSV = lists:map(fun int_to_string/1, [N | Cnts]),
+       io:format(CommandsFile, "~s~n", [list_to_csv(CntsCSV)])
+    end,
+  lists:foreach(WriteCommands, Stats),
+  file:close(CommandsFile),
+  {ok, PerformanceFile} =
+    file:open(
+      io_lib:format("~s_~s.csv", [mfa_to_filename(M, F, []), "performance"]),
+      [write]),
+  Header = lists:flatten([tests, ArgNames, time, passed, performed]),
+  io:format(PerformanceFile, "~s~n", [list_to_csv(Header)]),
+  WriteStats =
+    fun({N, A, Time, Passed, Performed, _}) ->
+       io:format(PerformanceFile,
+                 "~s~n",
+                 [list_to_csv(lists:flatten([N, A, Time, Passed, Performed]))])
+    end,
+  lists:foreach(WriteStats, Stats),
+  file:close(PerformanceFile),
+  ok.
+
+all_test_args_helper({M, F, A}, Nums, Tests, Opts) ->
+  Test = erlang:apply(M, F, A),
+  [Size | _] = A,
+  MaxSize = max(42, 2 * Size + 10),
+  PerformTest =
+    fun(Numtests) ->
+       NewOpts = [{numtests, Numtests}, {max_size, MaxSize} | Opts],
+       io:format("~w~n", [NewOpts]),
+       io:format("Performing ~s with ~w numtests ~w times.~n",
+                 [mfa_to_string(M, F, A), Numtests, Tests]),
+       lists:map(fun({N, Time, Passed, Performed, Samples}) ->
+                    {N, A, Time, Passed, Performed, Samples}
+                 end,
+                 perform_allinone_tests(Tests, Test, NewOpts))
+    end,
+  Results =
+    lists:flatten(
+      lists:map(PerformTest, Nums)),
+  Samples = lists:map(fun({_, _, _, _, _, S}) -> S end, Results),
+  CommandsCount = [count_commands(S) || S <- Samples],
+  lists:map(fun({{Num, Args, Time, Passed, Performed, _}, Counts}) ->
+               {Num, Args, Time, Passed, Performed, Counts}
+            end,
+            lists:zip(Results, CommandsCount)).
+
 %% -----------------------------------------------------------------------------
 %% Benchmarks
 %% -----------------------------------------------------------------------------
@@ -485,3 +563,15 @@ benchmark_labyrinth_8commands_2() ->
             [labyrinth_statem_more:maze(3)]},
            [20, 100, 200, 400, 600, 800, 1000, 1500, 2000],
            1000).
+
+benchmark_dfa_random() ->
+  all_test_args([{size, lists:seq(5, 60, 5)}],
+                {dfa, prop_random},
+                [100, 500, 1000, 2000],
+                1000).
+
+benchmark_dfa_targeted() ->
+  all_test_args([{size, lists:seq(5, 60, 5)}],
+                {dfa, prop_targeted},
+                [100, 500, 1000, 2000],
+                1000).
