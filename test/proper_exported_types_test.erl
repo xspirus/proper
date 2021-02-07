@@ -47,7 +47,8 @@
 %%
 
 not_handled() ->
-  Beams = filelib:wildcard("ebin/*.beam"),   % eunit executes from the top dir
+  % eunit executes from the top dir
+  Beams = filelib:wildcard("_build/test/lib/proper/ebin/*.beam"),
   MTs = lists:flatmap(fun get_exported_types/1, Beams),
   R = [{M,T,A,proper_typeserver:demo_translate_type(M, stringify(T, A))}
        || {M,T,A} <- MTs],

@@ -23,8 +23,8 @@
 %%% along with PropEr.  If not, see <http://www.gnu.org/licenses/>.
 
 %%% Author:      Manolis Papadakis
-%%% Description: Documentation processing script: This script will call EDoc on
-%%%              the application's source files, after inlining all types
+%%% Description: Documentation processing script: This script will prepare
+%%%              the application's source files, inlining all types
 %%%              denoted as aliases, and removing from the exported types lists
 %%%              all types denoted as private.
 %%% Known Bugs:  * This scipt is very hacky, it will probably break easily.
@@ -50,9 +50,6 @@
 -define(SRC_DIR, (?BASE_DIR ++ "/src")).
 -define(INCLUDE_DIR, (?BASE_DIR ++ "/include")).
 -define(TEMP_SRC_DIR, (?BASE_DIR ++ "/temp_src")).
--define(EDOC_OPTS, [{report_missing_types,true}, {report_type_mismatch,true},
-		    {pretty_printer,erl_pp}, {preprocess,true},
-		    {source_path, [?TEMP_SRC_DIR]}]).
 
 %%------------------------------------------------------------------------------
 %% Types
@@ -97,9 +94,6 @@ main(_CmdlineArgs) ->
     ok = filelib:fold_files(?SRC_DIR, ?SRC_FILES_RE, false, Copy, ok),
     Process = fun(Filename,ok) -> process(Filename) end,
     ok = filelib:fold_files(?TEMP_SRC_DIR, ?SRC_FILES_RE, false, Process, ok),
-    ok = edoc:application(?APP_NAME, ?BASE_DIR, ?EDOC_OPTS),
-    ok = filelib:fold_files(?TEMP_SRC_DIR, ?SRC_FILES_RE, false, Delete, ok),
-    ok = file:del_dir(?TEMP_SRC_DIR),
     ok.
 
 -spec process(file:filename()) -> 'ok'.

@@ -38,20 +38,15 @@ default: compile
 all: compile dialyzer doc test
 
 compile:
-	$(RM) ebin
 	$(REBAR3) compile
-	ln -s _build/default/lib/proper/ebin .
 
-dialyzer: .plt/proper_plt compile
-	dialyzer -n -nn --plt $< -Wunmatched_returns -Wunknown ebin
-
-.plt/proper_plt: .plt
-	dialyzer --build_plt --output_plt $@ --apps erts kernel stdlib compiler crypto syntax_tools eunit
+dialyzer: .plt
+	$(REBAR3) dialyzer
 
 check_escripts:
 	./scripts/check_escripts.sh make_doc
 
-test: compile
+test:
 ifeq ($(COVER), true)
 	$(REBAR3) do eunit -c, cover, covertool generate
 else
@@ -61,16 +56,16 @@ endif
 test-examples:
 	$(REBAR3) eunit --dir=examples_test
 
-doc: compile
-	./scripts/make_doc
+doc:
+	$(REBAR3) edoc
 
 clean:
 	./scripts/clean_temp.sh
 
 distclean: clean
 	$(REBAR3) clean
-	$(RM) .plt/proper_plt
-	$(RM) -r _build ebin rebar3 rebar.lock
+	$(RM) .plt/*_plt
+	$(RM) -r _build rebar3 rebar.lock
 
 rebuild: distclean compile
 
